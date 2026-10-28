@@ -2,6 +2,7 @@ package com.bayram.soundcorex20;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -9,13 +10,13 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
-import android.widget.Button;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -32,53 +33,49 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
 
     private SmartAutomationEngine engine;
 
-    // UI References
+    // Header & Language UI
+    private TextView tvAppTitle;
     private TextView tvConnStatus;
+    private TextView btnReconnect;
+    private TextView btnGrantNotifAccess;
+    private final TextView[] langButtons = new TextView[I18n.SUPPORTED_CODES.length];
+
+    // Device Hero Card
     private TextView tvModelName;
     private TextView tvDeviceMeta;
-    private TextView btnGrantNotifAccess;
-    private TextView tvLeftBatt;
-    private TextView tvRightBatt;
-    private TextView tvCaseBatt;
-    private ProgressBar pbLeftBatt;
-    private ProgressBar pbRightBatt;
-    private ProgressBar pbCaseBatt;
+    private TextView tvLeftBattLbl, tvRightBattLbl, tvCaseBattLbl;
+    private TextView tvLeftBatt, tvRightBatt, tvCaseBatt;
+    private ProgressBar pbLeftBatt, pbRightBatt, pbCaseBatt;
 
-    // Sound Mode Buttons
-    private TextView btnModeAnc;
-    private TextView btnModeTrans;
-    private TextView btnModeNormal;
-    private LinearLayout llAncSubOptions;
-    private LinearLayout llTransSubOptions;
+    // Sound Mode Controls
+    private TextView tvAncSecTitle;
+    private TextView btnModeAnc, btnModeTrans, btnModeNormal;
+    private LinearLayout llAncSubOptions, llTransSubOptions;
     private TextView btnAncWeak, btnAncMod, btnAncStrong, btnAncAdaptive, btnWindNoise;
     private TextView btnTransFull, btnTransVocal;
 
-    // #1A Auto-EQ UI
+    // Autonomous Section
+    private TextView tvAutoHeader;
+    private TextView tv1aTitle, tv1aSub, tvNowPlayingInfo, tvAutoEqRuleStatus, btnSimYt, btnSimYtm;
     private Switch swAutoEq;
-    private TextView tvNowPlayingInfo;
-    private TextView tvAutoEqRuleStatus;
 
-    // #1B Smart Activity UI
+    private TextView tv1bTitle, tv1bSub, tvActivityTelemetry, btnActStationary, btnActWalking, btnActTransit;
     private Switch swSmartActivity;
-    private TextView tvActivityTelemetry;
-    private TextView btnActStationary, btnActWalking, btnActTransit;
 
-    // #1C Speak-to-Chat UI
+    private TextView tv1cTitle, tv1cSub, tvSpeakStatus, tvThresholdVal;
     private Switch swSpeakToChat;
-    private TextView tvSpeakStatus;
     private ProgressBar pbMicLevel;
-    private TextView tvThresholdVal;
 
-    // Equalizer & BassUp UI
+    // Equalizer Studio
+    private TextView tvEqTitle, tvBassLbl;
     private Switch swBassUp;
     private final TextView[] presetButtons = new TextView[6];
     private final SeekBar[] eqSeekBars = new SeekBar[8];
     private final TextView[] eqValueLabels = new TextView[8];
     private boolean updatingUiProgrammatically = false;
 
-    // Telemetry Console UI
-    private TextView tvTxRxHex;
-    private TextView tvTelemetryLogs;
+    // Telemetry Console
+    private TextView tvTelemetryTitle, tvTxRxHex, tvTelemetryLogs;
 
     private static final String[] BAND_LABELS = {
             "100Hz", "200Hz", "400Hz", "800Hz", "1.6kHz", "3.2kHz", "6.4kHz", "12.8kHz"
@@ -144,9 +141,7 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
 
     private int dp(int value) {
         return (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP,
-                value,
-                getResources().getDisplayMetrics()
+                TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
         );
     }
 
@@ -183,35 +178,58 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
 
         LinearLayout titleCol = new LinearLayout(this);
         titleCol.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        header.addView(titleCol, titleLp);
+        header.addView(titleCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView tvAppTitle = new TextView(this);
-        tvAppTitle.setText("SOUNDCORE • PERSONALIZED");
+        tvAppTitle = new TextView(this);
+        tvAppTitle.setText(I18n.t("app_title"));
         tvAppTitle.setTextColor(Color.parseColor("#00E5FF"));
-        tvAppTitle.setTextSize(19);
+        tvAppTitle.setTextSize(18);
         tvAppTitle.setTypeface(Typeface.DEFAULT_BOLD);
         titleCol.addView(tvAppTitle);
 
         tvConnStatus = new TextView(this);
-        tvConnStatus.setText("Bağlanıyor...");
         tvConnStatus.setTextColor(Color.parseColor("#94A3B8"));
-        tvConnStatus.setTextSize(12);
+        tvConnStatus.setTextSize(11);
         titleCol.addView(tvConnStatus);
 
-        TextView btnReconnect = new TextView(this);
-        btnReconnect.setText("🔄 Senkronize Et");
+        btnReconnect = new TextView(this);
         btnReconnect.setTextColor(Color.parseColor("#00E5FF"));
-        btnReconnect.setTextSize(12);
+        btnReconnect.setTextSize(11);
         btnReconnect.setTypeface(Typeface.DEFAULT_BOLD);
         btnReconnect.setPadding(dp(12), dp(8), dp(12), dp(8));
         btnReconnect.setBackground(roundedBox("#112233", "#00E5FF", 12, 1));
         btnReconnect.setOnClickListener(v -> engine.connectToEarbuds());
         header.addView(btnReconnect);
 
-        // Self-service Notification Listener permission banner (only visible on phones without ADB grant)
+        // 1.5 MULTI-LANGUAGE BAR (Auto / TR / EN / DE / ES / FR / RU / AR)
+        HorizontalScrollView langScroll = new HorizontalScrollView(this);
+        langScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout.LayoutParams lsLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lsLp.topMargin = dp(10);
+        root.addView(langScroll, lsLp);
+
+        LinearLayout langRow = new LinearLayout(this);
+        langRow.setOrientation(LinearLayout.HORIZONTAL);
+        langScroll.addView(langRow);
+
+        for (int i = 0; i < I18n.SUPPORTED_CODES.length; i++) {
+            final String code = I18n.SUPPORTED_CODES[i];
+            TextView pill = createSmallSubBtn(I18n.SUPPORTED_LABELS[i]);
+            pill.setPadding(dp(10), dp(5), dp(10), dp(5));
+            LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            pLp.rightMargin = dp(6);
+            pill.setOnClickListener(v -> {
+                I18n.setLanguageOverride(code);
+                onStateUpdated();
+            });
+            langButtons[i] = pill;
+            langRow.addView(pill, pLp);
+        }
+
+        // Self-service Notification Listener permission banner
         btnGrantNotifAccess = new TextView(this);
-        btnGrantNotifAccess.setText("🔓 Otomatik Medya Algılama İznini Aç (Tek Dokunuşla Onayla)");
         btnGrantNotifAccess.setTextColor(Color.parseColor("#080B14"));
         btnGrantNotifAccess.setTextSize(12);
         btnGrantNotifAccess.setTypeface(Typeface.DEFAULT_BOLD);
@@ -223,43 +241,36 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         gnLp.topMargin = dp(10);
         btnGrantNotifAccess.setOnClickListener(v -> {
             try {
-                startActivity(new android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
-            } catch (Throwable ignored) {
-            }
+                startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
+            } catch (Throwable ignored) {}
         });
         root.addView(btnGrantNotifAccess, gnLp);
 
-        // 2. HERO DEVICE CARD (Sport X20 Earbuds + Battery Telemetry)
+        // 2. HERO DEVICE CARD
         root.addView(buildHeroDeviceCard());
 
-        // 3. MANUAL ANC / TRANSPARENCY / NORMAL CONTROL CARD
+        // 3. SOUND MODES CARD
         root.addView(buildSoundModesCard());
 
-        // 4. SECTION TITLE: #1 AUTONOMOUS MODES
-        TextView tvSec1 = new TextView(this);
-        tvSec1.setText("🧠 #1 OTONOM & BAĞLAM DUYARLI MODLAR");
-        tvSec1.setTextColor(Color.parseColor("#E2E8F0"));
-        tvSec1.setTextSize(14);
-        tvSec1.setTypeface(Typeface.DEFAULT_BOLD);
+        // 4. AUTONOMOUS SECTION HEADER
+        tvAutoHeader = new TextView(this);
+        tvAutoHeader.setTextColor(Color.parseColor("#E2E8F0"));
+        tvAutoHeader.setTextSize(13);
+        tvAutoHeader.setTypeface(Typeface.DEFAULT_BOLD);
         LinearLayout.LayoutParams secLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         secLp.topMargin = dp(18);
         secLp.bottomMargin = dp(8);
-        root.addView(tvSec1, secLp);
+        root.addView(tvAutoHeader, secLp);
 
-        // 4A. Per-App & Song Auto-EQ Card
         root.addView(buildAutoEqCard());
-
-        // 4B. Smart Activity & Speed ANC Card
         root.addView(buildSmartActivityCard());
-
-        // 4C. Speak-to-Chat (Voice Triggered Transparency) Card
         root.addView(buildSpeakToChatCard());
 
-        // 5. 8-BAND HARDWARE EQUALIZER & BASSUP STUDIO
+        // 5. EQUALIZER STUDIO
         root.addView(buildEqualizerStudioCard());
 
-        // 6. IOT & BLUETOOTH RFCOMM PACKET CONSOLE
+        // 6. TELEMETRY CONSOLE
         root.addView(buildTelemetryConsoleCard());
 
         return scroll;
@@ -272,10 +283,9 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         card.setBackground(roundedBox("#11172A", "#1E293B", 20, 1));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(14);
+        lp.topMargin = dp(12);
         card.setLayoutParams(lp);
 
-        // Earbud images + model metadata row
         LinearLayout topRow = new LinearLayout(this);
         topRow.setOrientation(LinearLayout.HORIZONTAL);
         topRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -284,12 +294,12 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         ImageView imgLeft = new ImageView(this);
         imgLeft.setImageResource(R.drawable.a3968_device_line_l);
         imgLeft.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        topRow.addView(imgLeft, new LinearLayout.LayoutParams(dp(58), dp(58)));
+        topRow.addView(imgLeft, new LinearLayout.LayoutParams(dp(56), dp(56)));
 
         ImageView imgRight = new ImageView(this);
         imgRight.setImageResource(R.drawable.a3968_device_line_r);
         imgRight.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(dp(58), dp(58));
+        LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(dp(56), dp(56));
         rLp.leftMargin = dp(4);
         topRow.addView(imgRight, rLp);
 
@@ -307,12 +317,10 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         metaCol.addView(tvModelName);
 
         tvDeviceMeta = new TextView(this);
-        tvDeviceMeta.setText("Model: A3968 • MAC: B0:38:E2:FC:55:7E\nFW: v01.65 • Kodek: AAC Stereo");
         tvDeviceMeta.setTextColor(Color.parseColor("#94A3B8"));
         tvDeviceMeta.setTextSize(11);
         metaCol.addView(tvDeviceMeta);
 
-        // Battery Row (Left, Right, Case)
         LinearLayout battRow = new LinearLayout(this);
         battRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams bRowLp = new LinearLayout.LayoutParams(
@@ -320,44 +328,42 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         bRowLp.topMargin = dp(14);
         card.addView(battRow, bRowLp);
 
-        pbLeftBatt = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        tvLeftBattLbl = new TextView(this);
         tvLeftBatt = new TextView(this);
-        battRow.addView(buildBatteryBox("SOL KULAKLIK", tvLeftBatt, pbLeftBatt, "#00E5FF"),
+        pbLeftBatt = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        battRow.addView(buildBatteryBox(tvLeftBattLbl, tvLeftBatt, pbLeftBatt, "#00E5FF"),
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        View spacer1 = new View(this);
-        battRow.addView(spacer1, new LinearLayout.LayoutParams(dp(8), 1));
+        battRow.addView(new View(this), new LinearLayout.LayoutParams(dp(8), 1));
 
-        pbRightBatt = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        tvRightBattLbl = new TextView(this);
         tvRightBatt = new TextView(this);
-        battRow.addView(buildBatteryBox("SAĞ KULAKLIK", tvRightBatt, pbRightBatt, "#00E5FF"),
+        pbRightBatt = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        battRow.addView(buildBatteryBox(tvRightBattLbl, tvRightBatt, pbRightBatt, "#00E5FF"),
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        View spacer2 = new View(this);
-        battRow.addView(spacer2, new LinearLayout.LayoutParams(dp(8), 1));
+        battRow.addView(new View(this), new LinearLayout.LayoutParams(dp(8), 1));
 
-        pbCaseBatt = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        tvCaseBattLbl = new TextView(this);
         tvCaseBatt = new TextView(this);
-        battRow.addView(buildBatteryBox("ŞARJ KUTUSU", tvCaseBatt, pbCaseBatt, "#A855F7"),
+        pbCaseBatt = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        battRow.addView(buildBatteryBox(tvCaseBattLbl, tvCaseBatt, pbCaseBatt, "#A855F7"),
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         return card;
     }
 
-    private LinearLayout buildBatteryBox(String label, TextView tvVal, ProgressBar pb, String accentHex) {
+    private LinearLayout buildBatteryBox(TextView tvLbl, TextView tvVal, ProgressBar pb, String accentHex) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(10), dp(8), dp(10), dp(8));
         box.setBackground(roundedBox("#182238", "#263554", 12, 1));
 
-        TextView tvLbl = new TextView(this);
-        tvLbl.setText(label);
         tvLbl.setTextColor(Color.parseColor("#94A3B8"));
-        tvLbl.setTextSize(10);
+        tvLbl.setTextSize(9);
         tvLbl.setTypeface(Typeface.DEFAULT_BOLD);
         box.addView(tvLbl);
 
-        tvVal.setText("%100");
         tvVal.setTextColor(Color.WHITE);
         tvVal.setTextSize(15);
         tvVal.setTypeface(Typeface.DEFAULT_BOLD);
@@ -383,12 +389,11 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         lp.topMargin = dp(12);
         card.setLayoutParams(lp);
 
-        TextView title = new TextView(this);
-        title.setText("🎧 AKTİF GÜRÜLTÜ KONTROLÜ (DONANIM DSP)");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(13);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        card.addView(title);
+        tvAncSecTitle = new TextView(this);
+        tvAncSecTitle.setTextColor(Color.WHITE);
+        tvAncSecTitle.setTextSize(12);
+        tvAncSecTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        card.addView(tvAncSecTitle);
 
         LinearLayout modeRow = new LinearLayout(this);
         modeRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -397,23 +402,20 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         mrLp.topMargin = dp(10);
         card.addView(modeRow, mrLp);
 
-        btnModeAnc = createPillButton("🛡️ ANC\nGürültü Engelle");
-        btnModeTrans = createPillButton("👂 Şeffaf Mod\nDış Ses Açık");
-        btnModeNormal = createPillButton("🎵 Normal\nPasif Mod");
+        btnModeAnc = createPillButton("");
+        btnModeTrans = createPillButton("");
+        btnModeNormal = createPillButton("");
 
-        btnModeAnc.setOnClickListener(v -> engine.setAmbientMode(SoundcoreProtocol.AMBIENT_ANC, "Manuel Seçim"));
-        btnModeTrans.setOnClickListener(v -> engine.setAmbientMode(SoundcoreProtocol.AMBIENT_TRANSPARENCY, "Manuel Seçim"));
-        btnModeNormal.setOnClickListener(v -> engine.setAmbientMode(SoundcoreProtocol.AMBIENT_NORMAL, "Manuel Seçim"));
+        btnModeAnc.setOnClickListener(v -> engine.setAmbientMode(SoundcoreProtocol.AMBIENT_ANC, "ANC"));
+        btnModeTrans.setOnClickListener(v -> engine.setAmbientMode(SoundcoreProtocol.AMBIENT_TRANSPARENCY, "Transparency"));
+        btnModeNormal.setOnClickListener(v -> engine.setAmbientMode(SoundcoreProtocol.AMBIENT_NORMAL, "Normal"));
 
         modeRow.addView(btnModeAnc, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        View s1 = new View(this);
-        modeRow.addView(s1, new LinearLayout.LayoutParams(dp(8), 1));
+        modeRow.addView(new View(this), new LinearLayout.LayoutParams(dp(8), 1));
         modeRow.addView(btnModeTrans, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        View s2 = new View(this);
-        modeRow.addView(s2, new LinearLayout.LayoutParams(dp(8), 1));
+        modeRow.addView(new View(this), new LinearLayout.LayoutParams(dp(8), 1));
         modeRow.addView(btnModeNormal, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        // ANC Sub-options (Weak / Moderate / Strong / Adaptive / Wind Noise)
         llAncSubOptions = new LinearLayout(this);
         llAncSubOptions.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
@@ -425,23 +427,23 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         strengthRow.setOrientation(LinearLayout.HORIZONTAL);
         llAncSubOptions.addView(strengthRow);
 
-        btnAncWeak = createSmallSubBtn("Zayıf (1)");
-        btnAncMod = createSmallSubBtn("Orta (2)");
-        btnAncStrong = createSmallSubBtn("Güçlü (3)");
-        btnAncAdaptive = createSmallSubBtn("Adaptif AI");
+        btnAncWeak = createSmallSubBtn("");
+        btnAncMod = createSmallSubBtn("");
+        btnAncStrong = createSmallSubBtn("");
+        btnAncAdaptive = createSmallSubBtn("");
 
         btnAncWeak.setOnClickListener(v -> engine.setAncDetails(
                 SoundcoreProtocol.NC_MODE_MANUAL, SoundcoreProtocol.ANC_STRENGTH_WEAK,
-                engine.getState().windNoiseSuppression, "ANC Seviye 1 (Zayıf)"));
+                engine.getState().windNoiseSuppression, "ANC Level 1"));
         btnAncMod.setOnClickListener(v -> engine.setAncDetails(
                 SoundcoreProtocol.NC_MODE_MANUAL, SoundcoreProtocol.ANC_STRENGTH_MODERATE,
-                engine.getState().windNoiseSuppression, "ANC Seviye 2 (Orta)"));
+                engine.getState().windNoiseSuppression, "ANC Level 2"));
         btnAncStrong.setOnClickListener(v -> engine.setAncDetails(
                 SoundcoreProtocol.NC_MODE_MANUAL, SoundcoreProtocol.ANC_STRENGTH_STRONG,
-                engine.getState().windNoiseSuppression, "ANC Seviye 3 (Güçlü)"));
+                engine.getState().windNoiseSuppression, "ANC Level 3"));
         btnAncAdaptive.setOnClickListener(v -> engine.setAncDetails(
                 SoundcoreProtocol.NC_MODE_ADAPTIVE, engine.getState().manualAncStrength,
-                engine.getState().windNoiseSuppression, "Adaptif ANC Modu"));
+                engine.getState().windNoiseSuppression, "Adaptive ANC"));
 
         strengthRow.addView(btnAncWeak, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         strengthRow.addView(new View(this), new LinearLayout.LayoutParams(dp(6), 1));
@@ -451,29 +453,27 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         strengthRow.addView(new View(this), new LinearLayout.LayoutParams(dp(6), 1));
         strengthRow.addView(btnAncAdaptive, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        btnWindNoise = createSmallSubBtn("💨 Rüzgar Gürültüsü Engelleme: KAPALI");
+        btnWindNoise = createSmallSubBtn("");
         LinearLayout.LayoutParams windLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         windLp.topMargin = dp(8);
         btnWindNoise.setOnClickListener(v -> {
             boolean next = !engine.getState().windNoiseSuppression;
-            engine.setAncDetails(engine.getState().ncMode, engine.getState().manualAncStrength,
-                    next, "Rüzgar Engelleme " + (next ? "AÇIK" : "KAPALI"));
+            engine.setAncDetails(engine.getState().ncMode, engine.getState().manualAncStrength, next, "Wind Suppression");
         });
         llAncSubOptions.addView(btnWindNoise, windLp);
 
-        // Transparency Sub-options (Fully Transparent / Vocal Mode)
         llTransSubOptions = new LinearLayout(this);
         llTransSubOptions.setOrientation(LinearLayout.HORIZONTAL);
         llTransSubOptions.setVisibility(View.GONE);
         card.addView(llTransSubOptions, subLp);
 
-        btnTransFull = createSmallSubBtn("🌐 Tam Şeffaf Mod");
-        btnTransVocal = createSmallSubBtn("🗣️ Vokal (Net İnsan Sesi)");
+        btnTransFull = createSmallSubBtn("");
+        btnTransVocal = createSmallSubBtn("");
         btnTransFull.setOnClickListener(v -> engine.setTransparencyDetails(
-                SoundcoreProtocol.TRANS_FULLY_TRANSPARENT, "Tam Şeffaf Mod"));
+                SoundcoreProtocol.TRANS_FULLY_TRANSPARENT, "Full Transparency"));
         btnTransVocal.setOnClickListener(v -> engine.setTransparencyDetails(
-                SoundcoreProtocol.TRANS_VOCAL_MODE, "Vokal Şeffaf Mod"));
+                SoundcoreProtocol.TRANS_VOCAL_MODE, "Vocal Mode"));
 
         llTransSubOptions.addView(btnTransFull, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         llTransSubOptions.addView(new View(this), new LinearLayout.LayoutParams(dp(8), 1));
@@ -501,25 +501,21 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         txtCol.setOrientation(LinearLayout.VERTICAL);
         top.addView(txtCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView tvTitle = new TextView(this);
-        tvTitle.setText("1A • Uygulama & Şarkı Duyarlı Otomatik EQ");
-        tvTitle.setTextColor(Color.parseColor("#00E5FF"));
-        tvTitle.setTextSize(14);
-        tvTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        txtCol.addView(tvTitle);
+        tv1aTitle = new TextView(this);
+        tv1aTitle.setTextColor(Color.parseColor("#00E5FF"));
+        tv1aTitle.setTextSize(14);
+        tv1aTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        txtCol.addView(tv1aTitle);
 
-        TextView tvSub = new TextView(this);
-        tvSub.setText("YouTube'da Net Konuşma EQ, YT Music/Spotify'da BassUp Müzik EQ");
-        tvSub.setTextColor(Color.parseColor("#94A3B8"));
-        tvSub.setTextSize(11);
-        txtCol.addView(tvSub);
+        tv1aSub = new TextView(this);
+        tv1aSub.setTextColor(Color.parseColor("#94A3B8"));
+        tv1aSub.setTextSize(11);
+        txtCol.addView(tv1aSub);
 
         swAutoEq = new Switch(this);
         swAutoEq.setChecked(true);
         swAutoEq.setOnCheckedChangeListener((b, checked) -> {
-            if (!updatingUiProgrammatically) {
-                engine.setAutoEqByAppEnabled(checked);
-            }
+            if (!updatingUiProgrammatically) engine.setAutoEqByAppEnabled(checked);
         });
         top.addView(swAutoEq);
 
@@ -541,7 +537,6 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         rsLp.topMargin = dp(6);
         card.addView(tvAutoEqRuleStatus, rsLp);
 
-        // Quick test buttons for YouTube vs YT Music
         LinearLayout simRow = new LinearLayout(this);
         simRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams srLp = new LinearLayout.LayoutParams(
@@ -549,19 +544,15 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         srLp.topMargin = dp(8);
         card.addView(simRow, srLp);
 
-        TextView btnSimYt = createSmallSubBtn("▶️ Test: YouTube (Konuşma EQ)");
+        btnSimYt = createSmallSubBtn("🎬 Test: YouTube (Cinema)");
         styleSelectableButton(btnSimYt, false, "#00E5FF");
         btnSimYt.setOnClickListener(v -> engine.simulateMediaAppSwitch(
-                "com.google.android.youtube",
-                "How the US Turned Iran Into a Dictatorship",
-                "Real Time History"
+                "com.google.android.youtube", "YouTube Cinema Video", "Dolby/Cinema Stage"
         ));
-        TextView btnSimYtm = createSmallSubBtn("🎵 Test: YT Music (BassUp EQ)");
+        btnSimYtm = createSmallSubBtn("🎵 Test: YT Music (Bass)");
         styleSelectableButton(btnSimYtm, false, "#00E5FF");
         btnSimYtm.setOnClickListener(v -> engine.simulateMediaAppSwitch(
-                "com.google.android.apps.youtube.music",
-                "Şar",
-                "Koma Azad"
+                "com.google.android.apps.youtube.music", "Şar", "Koma Azad"
         ));
 
         simRow.addView(btnSimYt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -590,25 +581,21 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         txtCol.setOrientation(LinearLayout.VERTICAL);
         top.addView(txtCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView tvTitle = new TextView(this);
-        tvTitle.setText("1B • Harekete ve Hıza Göre Otonom ANC");
-        tvTitle.setTextColor(Color.parseColor("#C084FC"));
-        tvTitle.setTextSize(14);
-        tvTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        txtCol.addView(tvTitle);
+        tv1bTitle = new TextView(this);
+        tv1bTitle.setTextColor(Color.parseColor("#C084FC"));
+        tv1bTitle.setTextSize(14);
+        tv1bTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        txtCol.addView(tv1bTitle);
 
-        TextView tvSub = new TextView(this);
-        tvSub.setText("Sabitken Max ANC • Koşarken Şeffaf Mod + Sport EQ • Araçta Rüzgar ANC");
-        tvSub.setTextColor(Color.parseColor("#94A3B8"));
-        tvSub.setTextSize(11);
-        txtCol.addView(tvSub);
+        tv1bSub = new TextView(this);
+        tv1bSub.setTextColor(Color.parseColor("#94A3B8"));
+        tv1bSub.setTextSize(11);
+        txtCol.addView(tv1bSub);
 
         swSmartActivity = new Switch(this);
         swSmartActivity.setChecked(true);
         swSmartActivity.setOnCheckedChangeListener((b, checked) -> {
-            if (!updatingUiProgrammatically) {
-                engine.setSmartActivityAncEnabled(checked);
-            }
+            if (!updatingUiProgrammatically) engine.setSmartActivityAncEnabled(checked);
         });
         top.addView(swSmartActivity);
 
@@ -629,9 +616,9 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         abLp.topMargin = dp(8);
         card.addView(actBtnRow, abLp);
 
-        btnActStationary = createSmallSubBtn("🪑 Sabit\n(Max ANC)");
-        btnActWalking = createSmallSubBtn("🏃 Yürüyüş/Koşu\n(Şeffaf+Sport)");
-        btnActTransit = createSmallSubBtn("🚆 Araç/Hızlı\n(Rüzgar ANC)");
+        btnActStationary = createSmallSubBtn("");
+        btnActWalking = createSmallSubBtn("");
+        btnActTransit = createSmallSubBtn("");
 
         btnActStationary.setOnClickListener(v -> engine.simulateActivityState(SmartAutomationEngine.ACTIVITY_STATIONARY));
         btnActWalking.setOnClickListener(v -> engine.simulateActivityState(SmartAutomationEngine.ACTIVITY_WALKING_RUNNING));
@@ -665,30 +652,25 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         txtCol.setOrientation(LinearLayout.VERTICAL);
         top.addView(txtCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView tvTitle = new TextView(this);
-        tvTitle.setText("1C • Speak-to-Chat (Konuşunca Şeffaf Mod)");
-        tvTitle.setTextColor(Color.parseColor("#34D399"));
-        tvTitle.setTextSize(14);
-        tvTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        txtCol.addView(tvTitle);
+        tv1cTitle = new TextView(this);
+        tv1cTitle.setTextColor(Color.parseColor("#34D399"));
+        tv1cTitle.setTextSize(14);
+        tv1cTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        txtCol.addView(tv1cTitle);
 
-        TextView tvSub = new TextView(this);
-        tvSub.setText("Konuştuğunuzda sesi %20'ye kısıp Vokal Şeffaf Moda geçer, 5 sn sonra ANC'ye döner");
-        tvSub.setTextColor(Color.parseColor("#94A3B8"));
-        tvSub.setTextSize(11);
-        txtCol.addView(tvSub);
+        tv1cSub = new TextView(this);
+        tv1cSub.setTextColor(Color.parseColor("#94A3B8"));
+        tv1cSub.setTextSize(11);
+        txtCol.addView(tv1cSub);
 
         swSpeakToChat = new Switch(this);
         swSpeakToChat.setChecked(false);
         swSpeakToChat.setOnCheckedChangeListener((b, checked) -> {
-            if (!updatingUiProgrammatically) {
-                engine.setSpeakToChatEnabled(checked);
-            }
+            if (!updatingUiProgrammatically) engine.setSpeakToChatEnabled(checked);
         });
         top.addView(swSpeakToChat);
 
         tvSpeakStatus = new TextView(this);
-        tvSpeakStatus.setText("Mikrofon Dinleme: Kapalı (Aktif etmek için anahtarı açın)");
         tvSpeakStatus.setTextColor(Color.parseColor("#E2E8F0"));
         tvSpeakStatus.setTextSize(12);
         LinearLayout.LayoutParams ssLp = new LinearLayout.LayoutParams(
@@ -714,7 +696,6 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         card.addView(threshRow, trLp);
 
         tvThresholdVal = new TextView(this);
-        tvThresholdVal.setText("Hassasiyet Eşiği: 58 dB");
         tvThresholdVal.setTextColor(Color.parseColor("#94A3B8"));
         tvThresholdVal.setTextSize(11);
         threshRow.addView(tvThresholdVal);
@@ -725,9 +706,7 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         sbThresh.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (fromUser) {
-                    engine.setSpeakThresholdLevel(25 + progress);
-                }
+                if (fromUser) engine.setSpeakThresholdLevel(25 + progress);
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
@@ -752,30 +731,25 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         topRow.setGravity(Gravity.CENTER_VERTICAL);
         card.addView(topRow);
 
-        TextView title = new TextView(this);
-        title.setText("🎛️ 8-BANT DONANIM EKOLAYZIR & BASSUP");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(13);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        topRow.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        tvEqTitle = new TextView(this);
+        tvEqTitle.setTextColor(Color.WHITE);
+        tvEqTitle.setTextSize(12);
+        tvEqTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        topRow.addView(tvEqTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView tvBassLbl = new TextView(this);
-        tvBassLbl.setText("🔥 BassUp ");
+        tvBassLbl = new TextView(this);
         tvBassLbl.setTextColor(Color.parseColor("#F59E0B"));
-        tvBassLbl.setTextSize(12);
+        tvBassLbl.setTextSize(11);
         tvBassLbl.setTypeface(Typeface.DEFAULT_BOLD);
         topRow.addView(tvBassLbl);
 
         swBassUp = new Switch(this);
         swBassUp.setChecked(true);
         swBassUp.setOnCheckedChangeListener((b, checked) -> {
-            if (!updatingUiProgrammatically) {
-                engine.setBassUpEnabled(checked);
-            }
+            if (!updatingUiProgrammatically) engine.setBassUpEnabled(checked);
         });
         topRow.addView(swBassUp);
 
-        // Horizontal scroll of EQ Presets
         HorizontalScrollView hsv = new HorizontalScrollView(this);
         hsv.setHorizontalScrollBarEnabled(false);
         LinearLayout.LayoutParams hsvLp = new LinearLayout.LayoutParams(
@@ -788,19 +762,18 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         presetRow.setOrientation(LinearLayout.HORIZONTAL);
         hsv.addView(presetRow);
 
-        for (int i = 0; i < SmartAutomationEngine.EQ_PRESET_NAMES.length; i++) {
+        for (int i = 0; i < 6; i++) {
             final int presetIdx = i;
-            TextView chip = createSmallSubBtn(SmartAutomationEngine.EQ_PRESET_NAMES[i]);
+            TextView chip = createSmallSubBtn("");
             chip.setPadding(dp(12), dp(8), dp(12), dp(8));
             LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             cLp.rightMargin = dp(8);
-            chip.setOnClickListener(v -> engine.applyEqPreset(presetIdx, engine.isBassUpEnabled(), "EQ Profili Seçildi"));
+            chip.setOnClickListener(v -> engine.applyEqPreset(presetIdx, engine.isBassUpEnabled(), "EQ Selected"));
             presetButtons[i] = chip;
             presetRow.addView(chip, cLp);
         }
 
-        // 8 Band Sliders
         for (int b = 0; b < 8; b++) {
             final int bandIdx = b;
             LinearLayout bandRow = new LinearLayout(this);
@@ -818,7 +791,7 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
             bandRow.addView(tvFreq, new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
 
             SeekBar sb = new SeekBar(this);
-            sb.setMax(240); // -120 to +120 tenths dB
+            sb.setMax(240);
             sb.setProgress(120);
             sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override
@@ -830,8 +803,7 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
                 @Override
                 public void onStopTrackingTouch(SeekBar seekBar) {
                     if (!updatingUiProgrammatically) {
-                        int tenthsDb = seekBar.getProgress() - 120;
-                        engine.setCustomEqBand(bandIdx, tenthsDb);
+                        engine.setCustomEqBand(bandIdx, seekBar.getProgress() - 120);
                     }
                 }
             });
@@ -860,12 +832,11 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         lp.topMargin = dp(14);
         card.setLayoutParams(lp);
 
-        TextView title = new TextView(this);
-        title.setText("📡 CANLI BLUETOOTH RFCOMM & IOT TELEMETRİ KONSOLU");
-        title.setTextColor(Color.parseColor("#38BDF8"));
-        title.setTextSize(12);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        card.addView(title);
+        tvTelemetryTitle = new TextView(this);
+        tvTelemetryTitle.setTextColor(Color.parseColor("#38BDF8"));
+        tvTelemetryTitle.setTextSize(12);
+        tvTelemetryTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        card.addView(tvTelemetryTitle);
 
         tvTxRxHex = new TextView(this);
         tvTxRxHex.setTypeface(Typeface.MONOSPACE);
@@ -915,8 +886,7 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
 
     private boolean isNotificationListenerEnabled() {
         try {
-            String flat = android.provider.Settings.Secure.getString(
-                    getContentResolver(), "enabled_notification_listeners");
+            String flat = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
             return flat != null && flat.contains(getPackageName());
         } catch (Throwable ignored) {
             return false;
@@ -928,9 +898,54 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         if (engine == null) return;
         updatingUiProgrammatically = true;
         try {
-            if (btnGrantNotifAccess != null) {
-                btnGrantNotifAccess.setVisibility(isNotificationListenerEnabled() ? View.GONE : View.VISIBLE);
+            String lang = I18n.getActiveLang();
+
+            // Update Multi-Language Pills
+            for (int i = 0; i < I18n.SUPPORTED_CODES.length; i++) {
+                boolean selected = I18n.SUPPORTED_CODES[i].equals(I18n.getLanguageOverride());
+                styleSelectableButton(langButtons[i], selected, "#00E5FF");
             }
+
+            // Localized static texts
+            tvAppTitle.setText(I18n.t("app_title"));
+            btnReconnect.setText(I18n.t("sync_btn"));
+            btnGrantNotifAccess.setText(I18n.t("grant_notif_btn"));
+            btnGrantNotifAccess.setVisibility(isNotificationListenerEnabled() ? View.GONE : View.VISIBLE);
+
+            tvLeftBattLbl.setText(I18n.t("left_earbud"));
+            tvRightBattLbl.setText(I18n.t("right_earbud"));
+            tvCaseBattLbl.setText(I18n.t("charging_case"));
+
+            tvAncSecTitle.setText(I18n.t("anc_section_title"));
+            btnModeAnc.setText(I18n.t("mode_anc"));
+            btnModeTrans.setText(I18n.t("mode_trans"));
+            btnModeNormal.setText(I18n.t("mode_normal"));
+
+            btnAncWeak.setText(I18n.t("anc_weak"));
+            btnAncMod.setText(I18n.t("anc_mod"));
+            btnAncStrong.setText(I18n.t("anc_strong"));
+            btnAncAdaptive.setText(I18n.t("anc_adaptive"));
+
+            btnTransFull.setText(I18n.t("trans_full"));
+            btnTransVocal.setText(I18n.t("trans_vocal"));
+
+            tvAutoHeader.setText(I18n.t("autonomous_header"));
+            tv1aTitle.setText(I18n.t("card_1a_title"));
+            tv1aSub.setText(I18n.t("card_1a_sub"));
+            tv1bTitle.setText(I18n.t("card_1b_title"));
+            tv1bSub.setText(I18n.t("card_1b_sub"));
+            tv1cTitle.setText(I18n.t("card_1c_title"));
+            tv1cSub.setText(I18n.t("card_1c_sub"));
+
+            btnActStationary.setText(I18n.t("btn_stationary"));
+            btnActWalking.setText(I18n.t("btn_walking"));
+            btnActTransit.setText(I18n.t("btn_transit"));
+
+            tvEqTitle.setText(I18n.t("eq_section_title"));
+            tvBassLbl.setText(I18n.t("cinema_boost_label"));
+            tvTelemetryTitle.setText(I18n.t("telemetry_title"));
+
+            // Dynamic state
             SoundcoreProtocol.DeviceState st = engine.getState();
             tvConnStatus.setText(engine.getConnectionStatusText());
             tvConnStatus.setTextColor(st.connected ? Color.parseColor("#34D399") : Color.parseColor("#FBBF24"));
@@ -967,7 +982,7 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
             styleSelectableButton(btnAncStrong, isManual && st.manualAncStrength == SoundcoreProtocol.ANC_STRENGTH_STRONG, "#00E5FF");
             styleSelectableButton(btnAncAdaptive, !isManual, "#00E5FF");
 
-            btnWindNoise.setText("💨 Rüzgar Gürültüsü Engelleme: " + (st.windNoiseSuppression ? "AÇIK" : "KAPALI"));
+            btnWindNoise.setText(st.windNoiseSuppression ? I18n.t("wind_on") : I18n.t("wind_off"));
             styleSelectableButton(btnWindNoise, st.windNoiseSuppression, "#38BDF8");
 
             styleSelectableButton(btnTransFull, st.transparencyMode == SoundcoreProtocol.TRANS_FULLY_TRANSPARENT, "#34D399");
@@ -979,21 +994,32 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
             String friendlyApp = pkg.contains("youtube.music") ? "YouTube Music"
                     : pkg.contains("youtube") ? "YouTube"
                     : pkg.contains("spotify") ? "Spotify" : pkg;
-            tvNowPlayingInfo.setText("🎶 Algılanan Medya: " + friendlyApp + "\nParça: "
+            String[] presetNames = I18n.getPresetNames();
+            tvNowPlayingInfo.setText("🎶 " + friendlyApp + "\n"
                     + engine.getCurrentMediaTitle() + " — " + engine.getCurrentMediaArtist());
-            tvAutoEqRuleStatus.setText("⚡ Aktif Otonom EQ Profili: "
-                    + SmartAutomationEngine.EQ_PRESET_NAMES[engine.getCurrentPresetIndex()]
-                    + (engine.isBassUpEnabled() ? " + 🔥 BassUp Açık" : ""));
+            tvAutoEqRuleStatus.setText("⚡ " + presetNames[engine.getCurrentPresetIndex()]
+                    + (engine.isBassUpEnabled() ? " + 🎬 Cinema Depth" : ""));
 
-            // #1B Smart Activity
+            // #1B Smart Step-Counter & Speed
             swSmartActivity.setChecked(engine.isSmartActivityAncEnabled());
             int actState = engine.getCurrentActivityState();
-            String actName = (actState == SmartAutomationEngine.ACTIVITY_STATIONARY) ? "🪑 Sabit / Masa Başı (Max ANC)"
-                    : (actState == SmartAutomationEngine.ACTIVITY_WALKING_RUNNING) ? "🏃 Yürüyüş / Koşu (Şeffaf + Sport EQ)"
-                    : "🚆 Araç / Hızlı Hareket (ANC + Rüzgar)";
-            tvActivityTelemetry.setText(String.format(Locale.US,
-                    "Sensör İvme (RMS): %.2f m/s² • GPS Hız: %.1f km/s\nAktif Durum: %s",
-                    engine.getCurrentMovementRms(), engine.getCurrentSpeedKmh(), actName));
+            String stepLabel = I18n.pick(lang,
+                    String.format(Locale.US, "🚶 Toplam Adım: %d • Aktif Pencere: %d/8 adım • Hız: %.1f km/s • İvme: %.2f m/s²",
+                            engine.getTotalSessionSteps(), engine.getRecentStepsCount(), engine.getCurrentSpeedKmh(), engine.getCurrentMovementRms()),
+                    String.format(Locale.US, "🚶 Total Steps: %d • Active Window: %d/8 steps • Speed: %.1f km/h • Accel: %.2f m/s²",
+                            engine.getTotalSessionSteps(), engine.getRecentStepsCount(), engine.getCurrentSpeedKmh(), engine.getCurrentMovementRms()),
+                    String.format(Locale.US, "🚶 Schritte: %d • Aktiv: %d/8 Schritte • Geschw.: %.1f km/h",
+                            engine.getTotalSessionSteps(), engine.getRecentStepsCount(), engine.getCurrentSpeedKmh()),
+                    String.format(Locale.US, "🚶 Pasos: %d • Ventana: %d/8 pasos • Vel.: %.1f km/h",
+                            engine.getTotalSessionSteps(), engine.getRecentStepsCount(), engine.getCurrentSpeedKmh()),
+                    String.format(Locale.US, "🚶 Pas: %d • Fenêtre: %d/8 pas • Vitesse: %.1f km/h",
+                            engine.getTotalSessionSteps(), engine.getRecentStepsCount(), engine.getCurrentSpeedKmh()),
+                    String.format(Locale.US, "🚶 Шаги: %d • Окно: %d/8 шагов • Скор.: %.1f км/ч",
+                            engine.getTotalSessionSteps(), engine.getRecentStepsCount(), engine.getCurrentSpeedKmh()),
+                    String.format(Locale.US, "🚶 الخطوات: %d • النافذة النشطة: %d/8 • السرعة: %.1f كم/س",
+                            engine.getTotalSessionSteps(), engine.getRecentStepsCount(), engine.getCurrentSpeedKmh())
+            );
+            tvActivityTelemetry.setText(stepLabel);
             styleSelectableButton(btnActStationary, actState == SmartAutomationEngine.ACTIVITY_STATIONARY, "#C084FC");
             styleSelectableButton(btnActWalking, actState == SmartAutomationEngine.ACTIVITY_WALKING_RUNNING, "#C084FC");
             styleSelectableButton(btnActTransit, actState == SmartAutomationEngine.ACTIVITY_TRANSIT_FAST, "#C084FC");
@@ -1001,23 +1027,44 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
             // #1C Speak-to-Chat
             swSpeakToChat.setChecked(engine.isSpeakToChatEnabled());
             pbMicLevel.setProgress(engine.getCurrentMicDbLevel());
-            tvThresholdVal.setText("Hassasiyet Eşiği: " + engine.getSpeakThresholdLevel() + " dB");
+            tvThresholdVal.setText(I18n.pick(lang,
+                    "Eşik: " + engine.getSpeakThresholdLevel() + " dB",
+                    "Threshold: " + engine.getSpeakThresholdLevel() + " dB",
+                    "Schwelle: " + engine.getSpeakThresholdLevel() + " dB",
+                    "Umbral: " + engine.getSpeakThresholdLevel() + " dB",
+                    "Seuil: " + engine.getSpeakThresholdLevel() + " dB",
+                    "Порог: " + engine.getSpeakThresholdLevel() + " дБ",
+                    "الحد: " + engine.getSpeakThresholdLevel() + " dB"));
             if (engine.isSpeakTriggeredActive()) {
-                tvSpeakStatus.setText("🗣️ KONUŞMA ALGILANDI! Vokal Şeffaf Mod Aktif (Ses %20) • ANC'ye dönüş: "
-                        + engine.getSpeakCountdownSec() + " sn");
+                tvSpeakStatus.setText("🗣️ " + I18n.pick(lang,
+                        "KONUŞMA ALGILANDI! Vokal Şeffaf Mod • ANC'ye dönüş: " + engine.getSpeakCountdownSec() + " sn",
+                        "SPEECH DETECTED! Vocal Transparency • Restoring ANC in " + engine.getSpeakCountdownSec() + "s",
+                        "SPRACHE ERKANNT! Transparenz • ANC in " + engine.getSpeakCountdownSec() + "s",
+                        "¡VOZ DETECTADA! Transparencia • ANC en " + engine.getSpeakCountdownSec() + "s",
+                        "VOIX DÉTECTÉE ! Transparence • ANC dans " + engine.getSpeakCountdownSec() + "s",
+                        "РЕЧЬ ОБНАРУЖЕНА! Прозрачность • ANC через " + engine.getSpeakCountdownSec() + " сек",
+                        "تم اكتشاف التحدث! وضع الشفافية • العودة خلال " + engine.getSpeakCountdownSec() + " ث"));
                 tvSpeakStatus.setTextColor(Color.parseColor("#34D399"));
             } else if (engine.isSpeakToChatEnabled()) {
-                tvSpeakStatus.setText("🎙️ Mikrofon Dinleniyor (Anlık Ses: " + engine.getCurrentMicDbLevel() + " dB)");
+                tvSpeakStatus.setText("🎙️ " + engine.getCurrentMicDbLevel() + " dB");
                 tvSpeakStatus.setTextColor(Color.parseColor("#E2E8F0"));
             } else {
-                tvSpeakStatus.setText("Mikrofon Dinleme: Kapalı");
+                tvSpeakStatus.setText(I18n.pick(lang,
+                        "Mikrofon Dinleme: Kapalı",
+                        "Voice Monitoring: Off",
+                        "Spracherkennung: Aus",
+                        "Monitoreo de Voz: Apagado",
+                        "Écoute Vocale : Désactivée",
+                        "Мониторинг речи: Выкл",
+                        "مراقبة الصوت: متوقفة"));
                 tvSpeakStatus.setTextColor(Color.parseColor("#94A3B8"));
             }
 
-            // Equalizer & BassUp
+            // Equalizer Studio
             swBassUp.setChecked(engine.isBassUpEnabled());
             for (int i = 0; i < presetButtons.length; i++) {
                 if (presetButtons[i] != null) {
+                    presetButtons[i].setText(presetNames[i]);
                     styleSelectableButton(presetButtons[i], i == engine.getCurrentPresetIndex(), "#00E5FF");
                 }
             }
@@ -1028,10 +1075,10 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
             }
 
             // Telemetry Console
-            tvTxRxHex.setText("TX (Giden) : " + engine.getLastTxHex() + "\nRX (Gelen) : " + engine.getLastRxHex());
+            tvTxRxHex.setText("TX : " + engine.getLastTxHex() + "\nRX : " + engine.getLastRxHex());
             List<String> logs = engine.getTelemetryLogs();
             StringBuilder sb = new StringBuilder();
-            int count = Math.min(10, logs.size());
+            int count = Math.min(8, logs.size());
             for (int i = 0; i < count; i++) {
                 sb.append(logs.get(i)).append("\n");
             }

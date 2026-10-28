@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
+import android.content.IntentFilter;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -16,10 +17,8 @@ import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
-import android.media.audiofx.BassBoost;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.LoudnessEnhancer;
-import android.media.audiofx.Virtualizer;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -29,9 +28,11 @@ import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 
 @SuppressLint("MissingPermission")
 public class SmartAutomationEngine implements SensorEventListener, LocationListener {
@@ -44,23 +45,17 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     public static final int ACTIVITY_WALKING_RUNNING = 1;
     public static final int ACTIVITY_TRANSIT_FAST = 2;
 
-    // Built-in EQ Presets (8 bands: 100Hz, 200Hz, 400Hz, 800Hz, 1.6kHz, 3.2kHz, 6.4kHz, 12.8kHz in 0.1dB)
+    /**
+     * Golden audiophile EQ curves (8 bands: 100Hz..12.8kHz in 0.1 dB units).
+     * Preset 0 is the exact warm, distortion-free Cinema & Natural Stage curve for YouTube/Movies.
+     */
     public static final int[][] EQ_PRESETS = new int[][]{
-            {0, 0, 0, 0, 0, 0, 0, 0},                // 0: Soundcore İmza (Orijinal Dengeli & Doğal)
-            {35, 25, 10, 0, 10, 15, 20, 15},         // 1: Müzik + Dengeli BassUp
-            {10, 15, 20, 20, 15, 10, 5, 0},          // 2: YouTube / Doğal Sinema
-            {30, 25, 10, 5, 15, 20, 25, 20},         // 3: Sport X20 Antrenman
-            {25, 15, -5, 0, 10, 20, 20, 20},         // 4: Rock & Enerji
-            {20, 10, 15, 15, 20, 20, 20, 10}         // 5: Akustik Sahne
-    };
-
-    public static final String[] EQ_PRESET_NAMES = new String[]{
-            "Soundcore İmza (Orijinal)",
-            "Müzik + BassUp",
-            "YouTube / Doğal Sinema",
-            "Sport X20 Antrenman",
-            "Rock & Enerji",
-            "Akustik Sahne"
+            {35, 25, 10, 5, 15, 20, 25, 20},          // 0: 🎬 Sinema & Doğal Sahne (YouTube / Film)
+            {45, 35, 15, 0, 15, 25, 30, 25},          // 1: 🎵 Müzik + Dengeli Bass
+            {15, 20, 30, 30, 25, 15, 10, 0},          // 2: 🎙️ Net Konuşma & Podcast
+            {45, 35, 15, 10, 20, 30, 35, 25},         // 3: 🏃 Sport X20 Antrenman
+            {35, 25, -5, 5, 15, 30, 30, 25},          // 4: 🎸 Rock & Canlı Sahne
+            {0, 0, 0, 0, 0, 0, 0, 0}                  // 5: 🎻 Saf Dengeli (0.0 dB)
     };
 
     private static SmartAutomationEngine instance;
@@ -82,44 +77,44 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     private OutputStream btOut;
     private InputStream btIn;
     private volatile boolean connecting = false;
-    private String connectionStatusText = "Bağlantı Bekleniyor...";
     private String lastTxHex = "-";
     private String lastRxHex = "-";
 
-    // AudioFX Dual Engine (Hardware DSP + System Cinema BassBoost & 3D Virtualizer)
+    // Smart Volume-Adaptive Cinema AudioFX
     private Equalizer systemEq;
-    private LoudnessEnhancer bassUpEnhancer;
-    private BassBoost systemBassBoost;
-    private Virtualizer systemVirtualizer;
-    private boolean bassUpEnabled = true;
+    private LoudnessEnhancer cinemaEnhancer;
+    private boolean cinemaDepthEnabled = true;
     private int currentPresetIndex = 0;
 
     // #1A: Auto-EQ by Media App
     private boolean autoEqByAppEnabled = true;
-    private String currentMediaPackage = "com.google.android.apps.youtube.music";
-    private String currentMediaTitle = "Şar";
-    private String currentMediaArtist = "Koma Azad";
+    private String currentMediaPackage = "com.google.android.youtube";
+    private String currentMediaTitle = "YouTube Video";
+    private String currentMediaArtist = "Cinema Audio";
     private boolean currentMediaPlaying = false;
     private String lastAutoEqAppliedForPkg = "";
 
-    // #1B: Smart Activity & Speed ANC
+    // #1B: Smart Step-Counter & Speed ANC
     private boolean smartActivityAncEnabled = true;
     private int currentActivityState = ACTIVITY_STATIONARY;
-    private float currentMovementRms = 0.15f;
+    private float currentMovementRms = 0.12f;
     private float currentSpeedKmh = 0.0f;
-    private long lastActivityChangeMs = 0L;
+    private int totalSessionSteps = 0;
+    private final List<Long> recentStepTimestamps = new ArrayList<>();
+    private long lastStepDetectedMs = 0L;
     private boolean simulationOverrideActive = false;
 
-    // #1C: Speak-to-Chat (Voice Detection -> Transparency + Volume Duck)
+    // #1C: Speak-to-Chat & Smart Call Assistant
     private boolean speakToChatEnabled = false;
     private volatile boolean speakThreadRunning = false;
-    private int currentMicDbLevel = 0; // 0..100
-    private int speakThresholdLevel = 58; // 0..100
+    private int currentMicDbLevel = 0;
+    private int speakThresholdLevel = 58;
     private boolean speakTriggeredActive = false;
     private int speakCountdownSec = 0;
     private int savedAmbientModeBeforeSpeech = SoundcoreProtocol.AMBIENT_ANC;
     private int savedVolumeBeforeSpeech = -1;
     private long lastSpeechDetectedTimeMs = 0L;
+    private boolean inPhoneCallMode = false;
 
     private final SensorManager sensorManager;
     private final AudioManager audioManager;
@@ -129,20 +124,20 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         this.sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
         this.audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
 
-        addLog("🚀 Soundcore Personalized Otonom Motoru başlatıldı.");
+        addLog("🚀 Soundcore Personalized v2.0 Autonomous Engine Ready");
         initSystemAudioFx();
         registerBluetoothReceiver();
         startSensors();
-        startPeriodicMediaPoll();
+        startPeriodicWatchdog();
         connectToEarbuds();
     }
 
     private void registerBluetoothReceiver() {
         try {
-            android.content.IntentFilter filter = new android.content.IntentFilter();
+            IntentFilter filter = new IntentFilter();
             filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
             filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-            filter.addAction( android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED);
+            filter.addAction(android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED);
             filter.addAction(android.bluetooth.BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
             filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
             context.registerReceiver(new BluetoothAutoConnectReceiver(), filter);
@@ -152,9 +147,7 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
 
     public synchronized void onEarbudsDisconnected(String reason) {
         try {
-            if (btSocket != null) {
-                btSocket.close();
-            }
+            if (btSocket != null) btSocket.close();
         } catch (Throwable ignored) {
         }
         btSocket = null;
@@ -162,7 +155,6 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         btIn = null;
         connecting = false;
         state.connected = false;
-        connectionStatusText = "Kulaklık Kutuda / Bağlantı Bekleniyor (Otomatik Bağlanacak)";
         addLog(reason);
         notifyListeners();
     }
@@ -189,16 +181,14 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     }
 
     public void addListener(Listener l) {
-        if (!listeners.contains(l)) {
-            listeners.add(l);
-        }
+        if (!listeners.contains(l)) listeners.add(l);
     }
 
     public void removeListener(Listener l) {
         listeners.remove(l);
     }
 
-    private void notifyListeners() {
+    public void notifyListeners() {
         mainHandler.post(() -> {
             for (Listener l : new ArrayList<>(listeners)) {
                 l.onStateUpdated();
@@ -224,131 +214,115 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     }
 
     public String getConnectionStatusText() {
-        return connectionStatusText;
+        String lang = I18n.getActiveLang();
+        if (state.connected) {
+            return I18n.pick(lang,
+                    "Bağlı • " + state.deviceName + " (RFCOMM Aktif)",
+                    "Connected • " + state.deviceName + " (RFCOMM Active)",
+                    "Verbunden • " + state.deviceName + " (RFCOMM Aktiv)",
+                    "Conectado • " + state.deviceName + " (RFCOMM Activo)",
+                    "Connecté • " + state.deviceName + " (RFCOMM Actif)",
+                    "Подключено • " + state.deviceName + " (RFCOMM)",
+                    "متصل • " + state.deviceName + " (RFCOMM نشط)");
+        } else if (connecting) {
+            return I18n.pick(lang,
+                    "Bağlanılıyor • " + state.deviceName + "...",
+                    "Connecting • " + state.deviceName + "...",
+                    "Verbinde • " + state.deviceName + "...",
+                    "Conectando • " + state.deviceName + "...",
+                    "Connexion • " + state.deviceName + "...",
+                    "Подключение • " + state.deviceName + "...",
+                    "جاري الاتصال • " + state.deviceName + "...");
+        } else {
+            return I18n.pick(lang,
+                    "Otomatik Bağlantı Bekleniyor (Kutudan Çıkarın)",
+                    "Waiting for Auto-Connect (Take out of case)",
+                    "Warte auf Auto-Verbindung",
+                    "Esperando conexión automática",
+                    "En attente de connexion auto",
+                    "Ожидание автоподключения",
+                    "في انتظار الاتصال التلقائي");
+        }
     }
 
-    public String getLastTxHex() {
-        return lastTxHex;
+    public String getLastTxHex() { return lastTxHex; }
+    public String getLastRxHex() { return lastRxHex; }
+    public boolean isBassUpEnabled() { return cinemaDepthEnabled; }
+    public int getCurrentPresetIndex() { return currentPresetIndex; }
+    public boolean isAutoEqByAppEnabled() { return autoEqByAppEnabled; }
+    public boolean isSmartActivityAncEnabled() { return smartActivityAncEnabled; }
+    public boolean isSpeakToChatEnabled() { return speakToChatEnabled; }
+    public String getCurrentMediaPackage() { return currentMediaPackage; }
+    public String getCurrentMediaTitle() { return currentMediaTitle; }
+    public String getCurrentMediaArtist() { return currentMediaArtist; }
+    public int getCurrentActivityState() { return currentActivityState; }
+    public float getCurrentMovementRms() { return currentMovementRms; }
+    public float getCurrentSpeedKmh() { return currentSpeedKmh; }
+    public int getTotalSessionSteps() { return totalSessionSteps; }
+    public int getRecentStepsCount() {
+        pruneOldSteps(System.currentTimeMillis());
+        return recentStepTimestamps.size();
     }
-
-    public String getLastRxHex() {
-        return lastRxHex;
-    }
-
-    public boolean isBassUpEnabled() {
-        return bassUpEnabled;
-    }
-
-    public int getCurrentPresetIndex() {
-        return currentPresetIndex;
-    }
-
-    public boolean isAutoEqByAppEnabled() {
-        return autoEqByAppEnabled;
-    }
-
-    public boolean isSmartActivityAncEnabled() {
-        return smartActivityAncEnabled;
-    }
-
-    public boolean isSpeakToChatEnabled() {
-        return speakToChatEnabled;
-    }
-
-    public String getCurrentMediaPackage() {
-        return currentMediaPackage;
-    }
-
-    public String getCurrentMediaTitle() {
-        return currentMediaTitle;
-    }
-
-    public String getCurrentMediaArtist() {
-        return currentMediaArtist;
-    }
-
-    public int getCurrentActivityState() {
-        return currentActivityState;
-    }
-
-    public float getCurrentMovementRms() {
-        return currentMovementRms;
-    }
-
-    public float getCurrentSpeedKmh() {
-        return currentSpeedKmh;
-    }
-
-    public int getCurrentMicDbLevel() {
-        return currentMicDbLevel;
-    }
-
-    public int getSpeakThresholdLevel() {
-        return speakThresholdLevel;
-    }
+    public int getCurrentMicDbLevel() { return currentMicDbLevel; }
+    public int getSpeakThresholdLevel() { return speakThresholdLevel; }
+    public boolean isSpeakTriggeredActive() { return speakTriggeredActive; }
+    public int getSpeakCountdownSec() { return speakCountdownSec; }
 
     public void setSpeakThresholdLevel(int level) {
         this.speakThresholdLevel = Math.max(25, Math.min(90, level));
         notifyListeners();
     }
 
-    public boolean isSpeakTriggeredActive() {
-        return speakTriggeredActive;
-    }
-
-    public int getSpeakCountdownSec() {
-        return speakCountdownSec;
-    }
-
+    /**
+     * Volume-Adaptive Cinema AudioFX:
+     * Gives the exact warm, movie-theater feel from v1.0 without ever distorting at high volume.
+     */
     private void initSystemAudioFx() {
         try {
             systemEq = new Equalizer(100, 0);
-            systemEq.setEnabled(false);
+            systemEq.setEnabled(true);
         } catch (Throwable ignored) {
         }
         try {
-            bassUpEnhancer = new LoudnessEnhancer(0);
-            bassUpEnhancer.setTargetGain(0);
-            bassUpEnhancer.setEnabled(false);
+            cinemaEnhancer = new LoudnessEnhancer(0);
+            cinemaEnhancer.setTargetGain(350);
+            cinemaEnhancer.setEnabled(cinemaDepthEnabled);
         } catch (Throwable ignored) {
         }
+        applySystemAudioFx(EQ_PRESETS[0], cinemaDepthEnabled);
     }
 
-    private void applySystemAudioFx(int[] bands8TenthsDb, boolean bassUp) {
+    private void applySystemAudioFx(int[] bands8TenthsDb, boolean cinemaDepth) {
         try {
+            float volRatio = 0.5f;
+            if (audioManager != null) {
+                int cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                int max = Math.max(1, audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+                volRatio = (float) cur / max;
+            }
+            // Dynamic head-room scaling: full cinema warmth at low/medium volume, gentle ceiling at high volume
+            float headroomScale = (volRatio > 0.75f) ? 0.65f : 1.0f;
+
             if (systemEq != null) {
-                boolean allZero = true;
-                for (int v : bands8TenthsDb) {
-                    if (v != 0) {
-                        allZero = false;
-                        break;
+                systemEq.setEnabled(true);
+                short numBands = systemEq.getNumberOfBands();
+                short[] range = systemEq.getBandLevelRange();
+                short minMb = range[0];
+                short maxMb = range[1];
+                for (short b = 0; b < numBands; b++) {
+                    int idx = Math.min(7, (b * 8) / numBands);
+                    int mb = Math.round(bands8TenthsDb[idx] * 9.5f * headroomScale);
+                    if (cinemaDepth && b == 0) {
+                        mb += Math.round(240 * headroomScale);
                     }
-                }
-                if (allZero && !bassUp) {
-                    systemEq.setEnabled(false);
-                } else {
-                    systemEq.setEnabled(true);
-                    short numBands = systemEq.getNumberOfBands();
-                    short[] range = systemEq.getBandLevelRange();
-                    short minMb = range[0];
-                    short maxMb = range[1];
-                    for (short b = 0; b < numBands; b++) {
-                        int idx = Math.min(7, (b * 8) / numBands);
-                        int mb = bands8TenthsDb[idx] * 8;
-                        if (bassUp && b == 0) {
-                            mb += 150;
-                        }
-                        short clamped = (short) Math.max(minMb, Math.min(maxMb, mb));
-                        systemEq.setBandLevel(b, clamped);
-                    }
+                    short clamped = (short) Math.max(minMb, Math.min(maxMb, mb));
+                    systemEq.setBandLevel(b, clamped);
                 }
             }
-        } catch (Throwable ignored) {
-        }
-        try {
-            if (bassUpEnhancer != null) {
-                bassUpEnhancer.setTargetGain(bassUp ? 200 : 0);
-                bassUpEnhancer.setEnabled(bassUp);
+            if (cinemaEnhancer != null) {
+                int targetGainMb = cinemaDepth ? Math.round(380 * headroomScale) : 0;
+                cinemaEnhancer.setTargetGain(targetGainMb);
+                cinemaEnhancer.setEnabled(cinemaDepth);
             }
         } catch (Throwable ignored) {
         }
@@ -357,19 +331,17 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     public synchronized void connectToEarbuds() {
         if (connecting || (btSocket != null && btSocket.isConnected())) {
             if (btSocket != null && btSocket.isConnected()) {
-                sendPacket(SoundcoreProtocol.buildRequestStatePacket(), "Durum Sorgulama");
+                sendPacket(SoundcoreProtocol.buildRequestStatePacket(), "State Sync [01 01]");
             }
             return;
         }
         connecting = true;
-        connectionStatusText = "soundcore Sport X20'ye Bağlanılıyor...";
         notifyListeners();
 
         new Thread(() -> {
             try {
                 BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
                 if (adapter == null || !adapter.isEnabled()) {
-                    connectionStatusText = "Bluetooth Kapalı";
                     connecting = false;
                     notifyListeners();
                     return;
@@ -378,7 +350,6 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                 BluetoothDevice target = null;
                 Set<BluetoothDevice> bonded = adapter.getBondedDevices();
                 if (bonded != null) {
-                    // First priority: a Soundcore device that is currently ACL connected
                     for (BluetoothDevice d : bonded) {
                         if (SoundcoreProtocol.isSoundcoreDevice(d)) {
                             try {
@@ -388,11 +359,8 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                                     target = d;
                                     break;
                                 }
-                            } catch (Throwable ignored) {
-                            }
-                            if (target == null) {
-                                target = d;
-                            }
+                            } catch (Throwable ignored) {}
+                            if (target == null) target = d;
                         }
                     }
                 }
@@ -406,35 +374,25 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                 if (target.getAddress() != null) {
                     state.deviceMac = target.getAddress();
                 }
-                java.util.UUID dynamicUuid = SoundcoreProtocol.findDeviceRfcommUuid(target);
+                UUID dynamicUuid = SoundcoreProtocol.findDeviceRfcommUuid(target);
 
                 BluetoothSocket sock = null;
-                // Strategy 1: Dynamically discovered Soundcore 0cf12d31-... UUID for this model
                 try {
                     sock = target.createRfcommSocketToServiceRecord(dynamicUuid);
                     sock.connect();
                 } catch (Throwable e1) {
-                    try {
-                        if (sock != null) sock.close();
-                    } catch (Throwable ignored) {}
-                    // Strategy 2: Insecure RFCOMM with dynamic UUID
+                    try { if (sock != null) sock.close(); } catch (Throwable ignored) {}
                     try {
                         sock = target.createInsecureRfcommSocketToServiceRecord(dynamicUuid);
                         sock.connect();
                     } catch (Throwable e2) {
-                        try {
-                            if (sock != null) sock.close();
-                        } catch (Throwable ignored) {}
-                        // Strategy 3: Direct RFCOMM SCN channel 10 / 1 fallback
+                        try { if (sock != null) sock.close(); } catch (Throwable ignored) {}
                         try {
                             Method m = target.getClass().getMethod("createRfcommSocket", int.class);
                             sock = (BluetoothSocket) m.invoke(target, 10);
                             if (sock != null) sock.connect();
                         } catch (Throwable e3) {
-                            try {
-                                if (sock != null) sock.close();
-                            } catch (Throwable ignored) {}
-                            // Strategy 4: Standard SPP UUID (00001101-...)
+                            try { if (sock != null) sock.close(); } catch (Throwable ignored) {}
                             sock = target.createRfcommSocketToServiceRecord(SoundcoreProtocol.SPP_FALLBACK_UUID);
                             sock.connect();
                         }
@@ -445,24 +403,19 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                 btOut = sock.getOutputStream();
                 btIn = sock.getInputStream();
                 state.connected = true;
-                connectionStatusText = "Bağlı • " + state.deviceName + " (RFCOMM Aktif)";
-                addLog("✅ " + state.deviceName + " (" + state.deviceMac + ") RFCOMM kanalına bağlandı!");
+                addLog("✅ Connected: " + state.deviceName + " (" + state.deviceMac + ")");
                 connecting = false;
                 notifyListeners();
 
                 startReaderThread();
-                Thread.sleep(250);
-                sendPacket(SoundcoreProtocol.buildRequestStatePacket(), "Tam Durum Sorgusu [01 01]");
-                Thread.sleep(350);
-                // Restore clean Soundcore Signature (Preset 0, flat 0.0 dB) on hardware DSP
-                int[] flat = new int[]{0, 0, 0, 0, 0, 0, 0, 0};
-                sendPacket(SoundcoreProtocol.buildSetEqualizerPacket(0x0000, flat), "Orijinal Soundcore İmza EQ Yüklendi");
+                Thread.sleep(220);
+                sendPacket(SoundcoreProtocol.buildRequestStatePacket(), "State Query [01 01]");
+                Thread.sleep(320);
+                applyEqPreset(currentPresetIndex, cinemaDepthEnabled, "🎬 Cinema Stage Ready");
 
             } catch (Throwable e) {
                 connecting = false;
                 state.connected = false;
-                connectionStatusText = "A2DP Bağlı (RFCOMM için Yeniden Bağlan'a dokunun)";
-                addLog("⚠️ RFCOMM meşgul olabilir (Resmi Soundcore uygulaması açık olabilir): " + e.getMessage());
                 notifyListeners();
             }
         }, "X20-RFCOMM-Connect").start();
@@ -478,7 +431,7 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                     lastRxHex = SoundcoreProtocol.toHex(buf, n);
                     boolean updated = SoundcoreProtocol.parseInboundPacket(buf, n, state);
                     if (updated) {
-                        addLog("📥 Kulaklıktan veri alındı: " + lastRxHex);
+                        addLog("📥 RX Packet: " + lastRxHex);
                     }
                     notifyListeners();
                 } catch (Throwable e) {
@@ -486,7 +439,6 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                 }
             }
             state.connected = false;
-            connectionStatusText = "RFCOMM Bağlantısı Kesildi";
             notifyListeners();
         }, "X20-RFCOMM-Reader").start();
     }
@@ -502,13 +454,12 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                 } else {
                     connectToEarbuds();
                 }
-            } catch (Throwable e) {
-                addLog("❌ Paket gönderme hatası: " + e.getMessage());
+            } catch (Throwable ignored) {
             }
         }).start();
     }
 
-    // ==================== SOUND MODES (ANC / TRANSPARENCY / NORMAL) ====================
+    // ==================== SOUND MODES ====================
 
     public void setAmbientMode(int ambientMode, String reason) {
         state.ambientMode = ambientMode;
@@ -522,9 +473,7 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                         state.ncMode,
                         state.windNoiseSuppression
                 );
-        String modeName = (ambientMode == SoundcoreProtocol.AMBIENT_ANC) ? "ANC (Gürültü Engelleme)"
-                : (ambientMode == SoundcoreProtocol.AMBIENT_TRANSPARENCY) ? "Şeffaf Mod" : "Normal Mod";
-        sendPacket(pkt, reason + ": " + modeName);
+        sendPacket(pkt, reason);
         notifyListeners();
     }
 
@@ -533,14 +482,16 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         state.ncMode = ncMode;
         state.manualAncStrength = manualStrength;
         state.windNoiseSuppression = windSuppression;
-        byte[] pkt = SoundcoreProtocol.buildSetSoundModesPacket(
-                state.ambientMode,
-                state.manualAncStrength,
-                state.adaptiveAncLevel,
-                state.transparencyMode,
-                state.ncMode,
-                state.windNoiseSuppression
-        );
+        byte[] pkt = state.uses4ByteSoundMode
+                ? SoundcoreProtocol.buildSetSoundModes4BytePacket(state.ambientMode, state.manualAncStrength, state.transparencyMode)
+                : SoundcoreProtocol.buildSetSoundModesPacket(
+                        state.ambientMode,
+                        state.manualAncStrength,
+                        state.adaptiveAncLevel,
+                        state.transparencyMode,
+                        state.ncMode,
+                        state.windNoiseSuppression
+                );
         sendPacket(pkt, reason);
         notifyListeners();
     }
@@ -548,58 +499,57 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     public void setTransparencyDetails(int transMode, String reason) {
         state.ambientMode = SoundcoreProtocol.AMBIENT_TRANSPARENCY;
         state.transparencyMode = transMode;
-        byte[] pkt = SoundcoreProtocol.buildSetSoundModesPacket(
-                state.ambientMode,
-                state.manualAncStrength,
-                state.adaptiveAncLevel,
-                state.transparencyMode,
-                state.ncMode,
-                state.windNoiseSuppression
-        );
+        byte[] pkt = state.uses4ByteSoundMode
+                ? SoundcoreProtocol.buildSetSoundModes4BytePacket(state.ambientMode, state.manualAncStrength, state.transparencyMode)
+                : SoundcoreProtocol.buildSetSoundModesPacket(
+                        state.ambientMode,
+                        state.manualAncStrength,
+                        state.adaptiveAncLevel,
+                        state.transparencyMode,
+                        state.ncMode,
+                        state.windNoiseSuppression
+                );
         sendPacket(pkt, reason);
         notifyListeners();
     }
 
-    // ==================== EQUALIZER & BASSUP ====================
+    // ==================== EQUALIZER & CINEMA DEPTH ====================
 
-    public void applyEqPreset(int presetIndex, boolean enableBassUp, String reason) {
+    public void applyEqPreset(int presetIndex, boolean enableCinemaDepth, String reason) {
         if (presetIndex < 0 || presetIndex >= EQ_PRESETS.length) return;
         this.currentPresetIndex = presetIndex;
-        this.bassUpEnabled = enableBassUp;
+        this.cinemaDepthEnabled = enableCinemaDepth;
         int[] bands = new int[8];
         for (int i = 0; i < 8; i++) {
             bands[i] = EQ_PRESETS[presetIndex][i];
-            if (enableBassUp && presetIndex != 0 && i == 0) {
-                bands[i] = Math.min(120, bands[i] + 15);
-            }
             state.eqBandsTenthsDb[i] = bands[i];
         }
-        applySystemAudioFx(bands, enableBassUp && presetIndex != 0);
-        int hwPresetId = (presetIndex == 0) ? 0x0000 : 0xFEFE;
+        applySystemAudioFx(bands, enableCinemaDepth);
+        int hwPresetId = (presetIndex == 5) ? 0x0000 : 0xFEFE;
         byte[] pkt = SoundcoreProtocol.buildSetEqualizerPacket(hwPresetId, bands);
-        sendPacket(pkt, reason + " [" + EQ_PRESET_NAMES[presetIndex] + "]");
+        String[] names = I18n.getPresetNames();
+        sendPacket(pkt, reason + " [" + names[presetIndex] + "]");
         notifyListeners();
     }
 
     public void setCustomEqBand(int bandIndex, int tenthsDb) {
         if (bandIndex < 0 || bandIndex >= 8) return;
         state.eqBandsTenthsDb[bandIndex] = Math.max(-120, Math.min(120, tenthsDb));
-        applySystemAudioFx(state.eqBandsTenthsDb, bassUpEnabled);
+        applySystemAudioFx(state.eqBandsTenthsDb, cinemaDepthEnabled);
         byte[] pkt = SoundcoreProtocol.buildSetEqualizerPacket(0xFEFE, state.eqBandsTenthsDb);
-        sendPacket(pkt, "Özel EQ Bant " + (bandIndex + 1) + " (" + (tenthsDb / 10.0f) + " dB)");
+        sendPacket(pkt, "EQ Band " + (bandIndex + 1) + " (" + (tenthsDb / 10.0f) + " dB)");
         notifyListeners();
     }
 
     public void setBassUpEnabled(boolean enabled) {
-        this.bassUpEnabled = enabled;
-        applyEqPreset(currentPresetIndex, enabled, "BassUp Değiştirildi");
+        this.cinemaDepthEnabled = enabled;
+        applyEqPreset(currentPresetIndex, enabled, "🎬 Cinema Depth: " + (enabled ? "ON" : "OFF"));
     }
 
-    // ==================== #1A: PER-APP / PER-SONG AUTO-EQ ====================
+    // ==================== #1A: SMART CINEMA & MEDIA AUTO-SOUND ====================
 
     public void setAutoEqByAppEnabled(boolean enabled) {
         this.autoEqByAppEnabled = enabled;
-        addLog("🎵 Uygulama Duyarlı Otomatik EQ: " + (enabled ? "AÇIK" : "KAPALI"));
         if (enabled) {
             lastAutoEqAppliedForPkg = "";
             evaluateAutoEqForCurrentMedia();
@@ -607,18 +557,33 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         notifyListeners();
     }
 
-    private void startPeriodicMediaPoll() {
+    private void startPeriodicWatchdog() {
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 MediaNotificationListener.pollActiveMediaSessions(context);
-                // Auto-reconnect watchdog if earbuds are out of case (ACL connected) but RFCOMM socket is not open
+                checkPhoneCallState();
+                evaluateIdleStepReturnToAnc();
                 if (!state.connected && !connecting && isEarbudAclConnected()) {
                     connectToEarbuds();
                 }
-                mainHandler.postDelayed(this, 3000);
+                mainHandler.postDelayed(this, 2500);
             }
         }, 1500);
+    }
+
+    private void checkPhoneCallState() {
+        if (audioManager == null) return;
+        int mode = audioManager.getMode();
+        boolean callActive = (mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION || mode == AudioManager.MODE_RINGTONE);
+        if (callActive && !inPhoneCallMode) {
+            inPhoneCallMode = true;
+            savedAmbientModeBeforeSpeech = state.ambientMode;
+            setTransparencyDetails(SoundcoreProtocol.TRANS_VOCAL_MODE, "📞 Smart Call Assistant -> Vocal Transparency");
+        } else if (!callActive && inPhoneCallMode) {
+            inPhoneCallMode = false;
+            setAmbientMode(savedAmbientModeBeforeSpeech, "📞 Call Ended -> Restored ANC");
+        }
     }
 
     public void onMediaSessionDetected(String pkg, String title, String artist, boolean playing) {
@@ -631,6 +596,8 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         if (autoEqByAppEnabled && !pkg.equals(lastAutoEqAppliedForPkg)) {
             evaluateAutoEqForCurrentMedia();
         } else if (changed) {
+            // Also refresh volume-adaptive headroom whenever media state updates
+            applySystemAudioFx(state.eqBandsTenthsDb, cinemaDepthEnabled);
             notifyListeners();
         }
     }
@@ -646,19 +613,20 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         String pkg = currentMediaPackage.toLowerCase(Locale.ROOT);
 
         if (pkg.contains("youtube.music") || pkg.contains("spotify") || pkg.contains("deezer") || pkg.contains("apple.android.music")) {
-            applyEqPreset(1, true, "🤖 Auto-EQ (Müzik Algılandı)");
+            applyEqPreset(1, true, "🤖 Auto-EQ (Music)");
+        } else if (pkg.contains("podcast") || pkg.contains("audible")) {
+            applyEqPreset(2, false, "🤖 Auto-EQ (Podcast)");
         } else {
-            // Keep original Soundcore Signature (0.0 dB flat, clean cinema sound) for YouTube & general videos
-            applyEqPreset(0, false, "🤖 Auto-EQ (Orijinal Soundcore İmza)");
+            // YouTube / Movies / General -> Warm Cinema & Natural Stage (Preset 0) + Cinema Depth ON
+            applyEqPreset(0, true, "🤖 Auto-EQ (Cinema Stage)");
         }
     }
 
-    // ==================== #1B: SMART ACTIVITY & SPEED ANC ====================
+    // ==================== #1B: AUTO STEP-COUNTER & SPEED-AWARE ANC ====================
 
     public void setSmartActivityAncEnabled(boolean enabled) {
         this.smartActivityAncEnabled = enabled;
         this.simulationOverrideActive = false;
-        addLog("🏃 Harekete Göre Otonom ANC: " + (enabled ? "AÇIK" : "KAPALI"));
         notifyListeners();
     }
 
@@ -666,11 +634,13 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         try {
             if (sensorManager != null) {
                 Sensor accel = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
-                if (accel == null) {
-                    accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-                }
+                if (accel == null) accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
                 if (accel != null) {
-                    sensorManager.registerListener(this, accel, SensorManager.SENSOR_DELAY_NORMAL);
+                    sensorManager.registerListener(this, accel, SensorManager.SENSOR_DELAY_GAME);
+                }
+                Sensor stepDet = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR);
+                if (stepDet != null) {
+                    sensorManager.registerListener(this, stepDet, SensorManager.SENSOR_DELAY_NORMAL);
                 }
             }
         } catch (Throwable ignored) {
@@ -684,9 +654,55 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         }
     }
 
+    private synchronized void recordDetectedStep(long nowMs) {
+        if (nowMs - lastStepDetectedMs < 260L) return; // debounce >230 spm
+        lastStepDetectedMs = nowMs;
+        totalSessionSteps++;
+        recentStepTimestamps.add(nowMs);
+        pruneOldSteps(nowMs);
+
+        // If user takes 8+ steps within the 12-second window -> automatically switch to Walking Transparency!
+        if (smartActivityAncEnabled && !simulationOverrideActive && !speakTriggeredActive && !inPhoneCallMode) {
+            if (recentStepTimestamps.size() >= 8 && currentActivityState != ACTIVITY_WALKING_RUNNING && currentSpeedKmh < 18.0f) {
+                applyActivityStateRule(ACTIVITY_WALKING_RUNNING, "🚶 Auto Step Engine (" + recentStepTimestamps.size() + " steps)");
+            }
+        }
+        notifyListeners();
+    }
+
+    private synchronized void pruneOldSteps(long nowMs) {
+        Iterator<Long> it = recentStepTimestamps.iterator();
+        while (it.hasNext()) {
+            if (nowMs - it.next() > 12000L) {
+                it.remove();
+            }
+        }
+    }
+
+    private void evaluateIdleStepReturnToAnc() {
+        if (!smartActivityAncEnabled || simulationOverrideActive || speakTriggeredActive || inPhoneCallMode) return;
+        long now = System.currentTimeMillis();
+        pruneOldSteps(now);
+        if (currentActivityState == ACTIVITY_WALKING_RUNNING
+                && recentStepTimestamps.isEmpty()
+                && currentMovementRms < 0.8f
+                && currentSpeedKmh < 2.5f
+                && (now - lastStepDetectedMs > 12000L)) {
+            applyActivityStateRule(ACTIVITY_STATIONARY, "🪑 Auto Step Engine (Stationary 12s -> Max ANC)");
+        }
+    }
+
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if (event == null || event.values == null || event.values.length < 3) return;
+        if (event == null || event.sensor == null) return;
+        long now = System.currentTimeMillis();
+
+        if (event.sensor.getType() == Sensor.TYPE_STEP_DETECTOR) {
+            recordDetectedStep(now);
+            return;
+        }
+
+        if (event.values == null || event.values.length < 3) return;
         float x = event.values[0];
         float y = event.values[1];
         float z = event.values[2];
@@ -696,31 +712,20 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         }
         currentMovementRms = (float) (currentMovementRms * 0.85 + mag * 0.15);
 
-        if (!smartActivityAncEnabled || simulationOverrideActive || speakTriggeredActive) {
-            return;
+        // Accelerometer peak step detector fallback (triggers when rhythmic walking acceleration > 2.1 m/s²)
+        if (mag > 2.15 && (now - lastStepDetectedMs > 360L)) {
+            recordDetectedStep(now);
         }
 
-        long now = System.currentTimeMillis();
-        if (now - lastActivityChangeMs < 4000L) return;
-
-        int detectedState;
-        if (currentSpeedKmh >= 18.0f) {
-            detectedState = ACTIVITY_TRANSIT_FAST;
-        } else if (currentMovementRms >= 1.85f || (currentSpeedKmh >= 3.5f && currentSpeedKmh < 18.0f)) {
-            detectedState = ACTIVITY_WALKING_RUNNING;
-        } else {
-            detectedState = ACTIVITY_STATIONARY;
-        }
-
-        if (detectedState != currentActivityState) {
-            lastActivityChangeMs = now;
-            applyActivityStateRule(detectedState, "🤖 Sensör Otonom Kararı");
+        if (smartActivityAncEnabled && !simulationOverrideActive && !speakTriggeredActive && !inPhoneCallMode) {
+            if (currentSpeedKmh >= 18.0f && currentActivityState != ACTIVITY_TRANSIT_FAST) {
+                applyActivityStateRule(ACTIVITY_TRANSIT_FAST, "🚆 High Speed Detected -> Wind ANC");
+            }
         }
     }
 
     @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {
-    }
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
     @Override
     public void onLocationChanged(Location location) {
@@ -732,30 +737,32 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
 
     public void simulateActivityState(int newState) {
         this.simulationOverrideActive = true;
-        applyActivityStateRule(newState, "⚡ Akıllı Hareket Testi");
+        if (newState == ACTIVITY_WALKING_RUNNING) {
+            totalSessionSteps += 8;
+        }
+        applyActivityStateRule(newState, "⚡ Smart Step Test");
     }
 
     private void applyActivityStateRule(int newState, String prefix) {
         this.currentActivityState = newState;
         if (newState == ACTIVITY_STATIONARY) {
             setAncDetails(SoundcoreProtocol.NC_MODE_MANUAL, SoundcoreProtocol.ANC_STRENGTH_STRONG, false,
-                    prefix + " [Sabit -> Max ANC]");
+                    prefix + " -> Max ANC");
         } else if (newState == ACTIVITY_WALKING_RUNNING) {
             setTransparencyDetails(SoundcoreProtocol.TRANS_FULLY_TRANSPARENT,
-                    prefix + " [Yürüyüş/Koşu -> Şeffaf Mod]");
-            applyEqPreset(3, true, prefix + " [Sport X20 Antrenman EQ]");
+                    prefix + " -> Transparency");
+            applyEqPreset(3, true, prefix + " -> Sport EQ");
         } else if (newState == ACTIVITY_TRANSIT_FAST) {
             setAncDetails(SoundcoreProtocol.NC_MODE_MANUAL, SoundcoreProtocol.ANC_STRENGTH_STRONG, true,
-                    prefix + " [Araç/Hızlı -> ANC + Rüzgar Engelleme]");
+                    prefix + " -> Wind ANC");
         }
         notifyListeners();
     }
 
-    // ==================== #1C: SPEAK-TO-CHAT (VOICE TRIGGERED TRANSPARENCY) ====================
+    // ==================== #1C: SPEAK-TO-CHAT ====================
 
     public void setSpeakToChatEnabled(boolean enabled) {
         this.speakToChatEnabled = enabled;
-        addLog("🗣️ Konuşunca Şeffaf Mod (Speak-to-Chat): " + (enabled ? "AÇIK" : "KAPALI"));
         if (enabled) {
             startSpeakToChatThread();
         } else {
@@ -785,7 +792,6 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                         minBuf * 2
                 );
                 if (recorder.getState() != AudioRecord.STATE_INITIALIZED) {
-                    addLog("⚠️ Mikrofon başlatılamadı (İzin kontrol edin).");
                     speakThreadRunning = false;
                     return;
                 }
@@ -801,7 +807,6 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                             sumSq += (double) buffer[i] * buffer[i];
                         }
                         double rms = Math.sqrt(sumSq / read);
-                        // Convert RMS (0..32768) to a 0..100 UI scale
                         int level = (int) Math.min(100, Math.max(0, (20.0 * Math.log10(Math.max(1.0, rms))) * 1.15 - 10));
                         currentMicDbLevel = level;
 
@@ -820,8 +825,7 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
 
                         if (speakTriggeredActive) {
                             long elapsedMs = now - lastSpeechDetectedTimeMs;
-                            int rem = Math.max(0, 5 - (int) (elapsedMs / 1000L));
-                            speakCountdownSec = rem;
+                            speakCountdownSec = Math.max(0, 5 - (int) (elapsedMs / 1000L));
                             if (elapsedMs >= 5000L) {
                                 restoreAfterSpeech();
                             }
@@ -830,8 +834,7 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                     }
                     Thread.sleep(65);
                 }
-            } catch (Throwable e) {
-                addLog("⚠️ Speak-to-Chat durdu: " + e.getMessage());
+            } catch (Throwable ignored) {
             } finally {
                 if (recorder != null) {
                     try {
@@ -856,7 +859,7 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, duckVol, 0);
             }
         }
-        setTransparencyDetails(SoundcoreProtocol.TRANS_VOCAL_MODE, "🗣️ Konuşma Algılandı -> Vokal Şeffaf Mod");
+        setTransparencyDetails(SoundcoreProtocol.TRANS_VOCAL_MODE, "🗣️ Speak-to-Chat -> Vocal Mode");
     }
 
     private void restoreAfterSpeech() {
@@ -866,6 +869,6 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, savedVolumeBeforeSpeech, 0);
             savedVolumeBeforeSpeech = -1;
         }
-        setAmbientMode(savedAmbientModeBeforeSpeech, "🗣️ Konuşma Bitti -> Önceki Moda Dönüldü");
+        setAmbientMode(savedAmbientModeBeforeSpeech, "🗣️ Speech Ended -> Restored ANC");
     }
 }
