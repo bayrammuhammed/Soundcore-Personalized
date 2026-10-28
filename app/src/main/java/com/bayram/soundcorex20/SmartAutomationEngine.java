@@ -46,21 +46,21 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
 
     // Built-in EQ Presets (8 bands: 100Hz, 200Hz, 400Hz, 800Hz, 1.6kHz, 3.2kHz, 6.4kHz, 12.8kHz in 0.1dB)
     public static final int[][] EQ_PRESETS = new int[][]{
-            {60, 48, 22, 15, 35, 38, 42, 35},        // 0: 🎬 Sinema & YouTube IMAX (Derin Bas + Net Diyalog)
-            {70, 55, 25, 10, 25, 38, 48, 42},        // 1: 🎵 Müzik + BassUp Pro (Derin Sub-Bass)
-            {30, 25, 35, 40, 35, 25, 20, 15},        // 2: 🎙️ Sıcak Podcast & Vokal (Bas Kesmeden Net Ses)
-            {65, 50, 25, 15, 30, 42, 48, 40},        // 3: 🏃 Sport X20 Koşu & Antrenman
-            {55, 40, 10, 15, 30, 45, 45, 40},        // 4: 🎸 Rock & Sinematik Enerji
-            {45, 30, 25, 25, 40, 42, 40, 30}         // 5: 🎻 Akustik & Geniş Sahne
+            {0, 0, 0, 0, 0, 0, 0, 0},                // 0: Soundcore İmza (Orijinal Dengeli & Doğal)
+            {35, 25, 10, 0, 10, 15, 20, 15},         // 1: Müzik + Dengeli BassUp
+            {10, 15, 20, 20, 15, 10, 5, 0},          // 2: YouTube / Doğal Sinema
+            {30, 25, 10, 5, 15, 20, 25, 20},         // 3: Sport X20 Antrenman
+            {25, 15, -5, 0, 10, 20, 20, 20},         // 4: Rock & Enerji
+            {20, 10, 15, 15, 20, 20, 20, 10}         // 5: Akustik Sahne
     };
 
     public static final String[] EQ_PRESET_NAMES = new String[]{
-            "🎬 Sinema & YouTube IMAX",
-            "🎵 Müzik + BassUp Pro",
-            "🎙️ Sıcak Vokal & Podcast",
-            "🏃 Sport X20 Antrenman",
-            "🎸 Rock & Enerji",
-            "🎻 Akustik Sahne"
+            "Soundcore İmza (Orijinal)",
+            "Müzik + BassUp",
+            "YouTube / Doğal Sinema",
+            "Sport X20 Antrenman",
+            "Rock & Enerji",
+            "Akustik Sahne"
     };
 
     private static SmartAutomationEngine instance;
@@ -303,73 +303,52 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     private void initSystemAudioFx() {
         try {
             systemEq = new Equalizer(100, 0);
-            systemEq.setEnabled(true);
+            systemEq.setEnabled(false);
         } catch (Throwable ignored) {
         }
         try {
             bassUpEnhancer = new LoudnessEnhancer(0);
-            bassUpEnhancer.setTargetGain(bassUpEnabled ? 650 : 200);
-            bassUpEnhancer.setEnabled(true);
+            bassUpEnhancer.setTargetGain(0);
+            bassUpEnhancer.setEnabled(false);
         } catch (Throwable ignored) {
         }
-        try {
-            systemBassBoost = new BassBoost(100, 0);
-            if (systemBassBoost.getStrengthSupported()) {
-                systemBassBoost.setStrength((short) (bassUpEnabled ? 780 : 300));
-            }
-            systemBassBoost.setEnabled(true);
-        } catch (Throwable ignored) {
-        }
-        try {
-            systemVirtualizer = new Virtualizer(100, 0);
-            if (systemVirtualizer.getStrengthSupported()) {
-                systemVirtualizer.setStrength((short) 820);
-            }
-            systemVirtualizer.setEnabled(true);
-        } catch (Throwable ignored) {
-        }
-        applySystemAudioFx(EQ_PRESETS[0], true);
     }
 
     private void applySystemAudioFx(int[] bands8TenthsDb, boolean bassUp) {
         try {
             if (systemEq != null) {
-                short numBands = systemEq.getNumberOfBands();
-                short[] range = systemEq.getBandLevelRange();
-                short minMb = range[0];
-                short maxMb = range[1];
-                for (short b = 0; b < numBands; b++) {
-                    int idx = Math.min(7, (b * 8) / numBands);
-                    int mb = bands8TenthsDb[idx] * 12;
-                    if (bassUp && b == 0) {
-                        mb += 450;
-                    } else if (bassUp && b == 1) {
-                        mb += 280;
+                boolean allZero = true;
+                for (int v : bands8TenthsDb) {
+                    if (v != 0) {
+                        allZero = false;
+                        break;
                     }
-                    short clamped = (short) Math.max(minMb, Math.min(maxMb, mb));
-                    systemEq.setBandLevel(b, clamped);
+                }
+                if (allZero && !bassUp) {
+                    systemEq.setEnabled(false);
+                } else {
+                    systemEq.setEnabled(true);
+                    short numBands = systemEq.getNumberOfBands();
+                    short[] range = systemEq.getBandLevelRange();
+                    short minMb = range[0];
+                    short maxMb = range[1];
+                    for (short b = 0; b < numBands; b++) {
+                        int idx = Math.min(7, (b * 8) / numBands);
+                        int mb = bands8TenthsDb[idx] * 8;
+                        if (bassUp && b == 0) {
+                            mb += 150;
+                        }
+                        short clamped = (short) Math.max(minMb, Math.min(maxMb, mb));
+                        systemEq.setBandLevel(b, clamped);
+                    }
                 }
             }
         } catch (Throwable ignored) {
         }
         try {
             if (bassUpEnhancer != null) {
-                bassUpEnhancer.setTargetGain(bassUp ? 650 : 200);
-                bassUpEnhancer.setEnabled(true);
-            }
-        } catch (Throwable ignored) {
-        }
-        try {
-            if (systemBassBoost != null && systemBassBoost.getStrengthSupported()) {
-                systemBassBoost.setStrength((short) (bassUp ? 780 : 300));
-                systemBassBoost.setEnabled(true);
-            }
-        } catch (Throwable ignored) {
-        }
-        try {
-            if (systemVirtualizer != null && systemVirtualizer.getStrengthSupported()) {
-                systemVirtualizer.setStrength((short) 820);
-                systemVirtualizer.setEnabled(true);
+                bassUpEnhancer.setTargetGain(bassUp ? 200 : 0);
+                bassUpEnhancer.setEnabled(bassUp);
             }
         } catch (Throwable ignored) {
         }
@@ -474,11 +453,10 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                 startReaderThread();
                 Thread.sleep(250);
                 sendPacket(SoundcoreProtocol.buildRequestStatePacket(), "Tam Durum Sorgusu [01 01]");
-                Thread.sleep(500);
-                if (autoEqByAppEnabled) {
-                    lastAutoEqAppliedForPkg = "";
-                    evaluateAutoEqForCurrentMedia();
-                }
+                Thread.sleep(350);
+                // Restore clean Soundcore Signature (Preset 0, flat 0.0 dB) on hardware DSP
+                int[] flat = new int[]{0, 0, 0, 0, 0, 0, 0, 0};
+                sendPacket(SoundcoreProtocol.buildSetEqualizerPacket(0x0000, flat), "Orijinal Soundcore İmza EQ Yüklendi");
 
             } catch (Throwable e) {
                 connecting = false;
@@ -591,16 +569,15 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         int[] bands = new int[8];
         for (int i = 0; i < 8; i++) {
             bands[i] = EQ_PRESETS[presetIndex][i];
-            if (enableBassUp && i == 0) {
-                bands[i] = Math.min(120, bands[i] + 35);
-            } else if (enableBassUp && i == 1) {
-                bands[i] = Math.min(120, bands[i] + 20);
+            if (enableBassUp && presetIndex != 0 && i == 0) {
+                bands[i] = Math.min(120, bands[i] + 15);
             }
             state.eqBandsTenthsDb[i] = bands[i];
         }
-        applySystemAudioFx(bands, enableBassUp);
-        byte[] pkt = SoundcoreProtocol.buildSetEqualizerPacket(0xFEFE, bands);
-        sendPacket(pkt, reason + " [" + EQ_PRESET_NAMES[presetIndex] + (enableBassUp ? " + BassUp" : "") + "]");
+        applySystemAudioFx(bands, enableBassUp && presetIndex != 0);
+        int hwPresetId = (presetIndex == 0) ? 0x0000 : 0xFEFE;
+        byte[] pkt = SoundcoreProtocol.buildSetEqualizerPacket(hwPresetId, bands);
+        sendPacket(pkt, reason + " [" + EQ_PRESET_NAMES[presetIndex] + "]");
         notifyListeners();
     }
 
@@ -670,13 +647,9 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
 
         if (pkg.contains("youtube.music") || pkg.contains("spotify") || pkg.contains("deezer") || pkg.contains("apple.android.music")) {
             applyEqPreset(1, true, "🤖 Auto-EQ (Müzik Algılandı)");
-        } else if (pkg.contains("youtube") || pkg.contains("netflix") || pkg.contains("video")) {
-            // YouTube & Video -> Cinema & IMAX Deep Bass + Clear Dialogue WITH BassUp ON!
-            applyEqPreset(0, true, "🤖 Auto-EQ (YouTube Sinema & IMAX)");
-        } else if (pkg.contains("podcast") || pkg.contains("audible")) {
-            applyEqPreset(2, true, "🤖 Auto-EQ (Sıcak Podcast)");
         } else {
-            applyEqPreset(0, true, "🤖 Auto-EQ (Sinema & BassUp)");
+            // Keep original Soundcore Signature (0.0 dB flat, clean cinema sound) for YouTube & general videos
+            applyEqPreset(0, false, "🤖 Auto-EQ (Orijinal Soundcore İmza)");
         }
     }
 
