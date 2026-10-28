@@ -13,12 +13,17 @@ import android.hardware.SensorManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
+import android.media.AudioTrack;
 import android.media.MediaRecorder;
+import android.media.audiofx.AcousticEchoCanceler;
+import android.media.audiofx.AutomaticGainControl;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.LoudnessEnhancer;
+import android.media.audiofx.NoiseSuppressor;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -116,6 +121,13 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     private long lastSpeechDetectedTimeMs = 0L;
     private boolean inPhoneCallMode = false;
 
+    // #1D: Whisper & Call Mic Booster (VGM 15/15 + Hardware AGC + NS + AEC)
+    private boolean whisperCallBoostEnabled = true;
+    private int whisperGainMultiplierTenths = 32; // 3.2x boost for quiet whispers (10..50 = 1.0x..5.0x)
+    private volatile boolean whisperTestLoopbackActive = false;
+    private int currentWhisperInputDb = 0;
+    private int currentWhisperOutputDb = 0;
+
     private final SensorManager sensorManager;
     private final AudioManager audioManager;
 
@@ -126,6 +138,7 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
 
         addLog("🚀 Soundcore Personalized v2.0 Autonomous Engine Ready");
         initSystemAudioFx();
+        applyBluetoothCallMicBoostParameters();
         registerBluetoothReceiver();
         startSensors();
         startPeriodicWatchdog();
@@ -267,6 +280,12 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     public int getSpeakThresholdLevel() { return speakThresholdLevel; }
     public boolean isSpeakTriggeredActive() { return speakTriggeredActive; }
     public int getSpeakCountdownSec() { return speakCountdownSec; }
+    public boolean isWhisperCallBoostEnabled() { return whisperCallBoostEnabled; }
+    public int getWhisperGainMultiplierTenths() { return whisperGainMultiplierTenths; }
+    public boolean isWhisperTestLoopbackActive() { return whisperTestLoopbackActive; }
+    public int getCurrentWhisperInputDb() { return currentWhisperInputDb; }
+    public int getCurrentWhisperOutputDb() { return currentWhisperOutputDb; }
+    public boolean isInPhoneCallMode() { return inPhoneCallMode; }
 
     public void setSpeakThresholdLevel(int level) {
         this.speakThresholdLevel = Math.max(25, Math.min(90, level));
@@ -579,11 +598,197 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         if (callActive && !inPhoneCallMode) {
             inPhoneCallMode = true;
             savedAmbientModeBeforeSpeech = state.ambientMode;
-            setTransparencyDetails(SoundcoreProtocol.TRANS_VOCAL_MODE, "📞 Smart Call Assistant -> Vocal Transparency");
+            if (whisperCallBoostEnabled) {
+                applyBluetoothCallMicBoostParameters();
+                // Enable Wind Noise Suppression + Vocal Mode on Earbuds DSP so dual-mics focus on user's voice
+                state.windNoiseSuppression = true;
+                setTransparencyDetails(SoundcoreProtocol.TRANS_VOCAL_MODE,
+                        "📞 Call Active -> Whisper Mic Boost (VGM 15/15 + AGC + Wind Filter)");
+            } else {
+                setTransparencyDetails(SoundcoreProtocol.TRANS_VOCAL_MODE, "📞 Smart Call Assistant -> Vocal Mode");
+            }
         } else if (!callActive && inPhoneCallMode) {
             inPhoneCallMode = false;
+            state.windNoiseSuppression = false;
             setAmbientMode(savedAmbientModeBeforeSpeech, "📞 Call Ended -> Restored ANC");
         }
+    }
+
+    // ==================== #1D: WHISPER & CALL MIC BOOSTER (HFP VGM 15 + AGC + NS) ====================
+
+    public void setWhisperCallBoostEnabled(boolean enabled) {
+        this.whisperCallBoostEnabled = enabled;
+        if (enabled) {
+            applyBluetoothCallMicBoostParameters();
+            addLog("🎙️ Whisper Call Mic Booster ON (HFP VGM=15/15, Wideband mSBC, Hardware AGC+NS)");
+        } else {
+            addLog("🎙️ Whisper Call Mic Booster OFF");
+        }
+        notifyListeners();
+    }
+
+    public void setWhisperGainMultiplierTenths(int tenths) {
+        this.whisperGainMultiplierTenths = Math.max(10, Math.min(50, tenths));
+        applyBluetoothCallMicBoostParameters();
+        notifyListeners();
+    }
+
+    /**
+     * Configures the Android Audio HAL and Bluetooth HFP stack for maximum microphone sensitivity
+     * (fixes mMicVolume=0 in HeadsetStateMachine -> sets VGM=15/15, enables Wideband Speech & AGC).
+     */
+    public void applyBluetoothCallMicBoostParameters() {
+        if (audioManager == null || !whisperCallBoostEnabled) return;
+        try {
+            audioManager.setMicrophoneMute(false);
+            // Boost HFP microphone gain (VGM) from 0 to 15 (max), enable Wideband Speech (16kHz mSBC),
+            // dual-mic noise suppression, and hardware Automatic Gain Control
+            audioManager.setParameters(
+                    "bt_headset_vgm=15;" +
+                    "bt_headset_vgs=15;" +
+                    "bt_wbs=on;" +
+                    "noise_suppression=on;" +
+                    "aec_mode=on;" +
+                    "agc_enabled=true;" +
+                    "fluence=broadside;" +
+                    "mic_gain_level=high"
+            );
+            int maxCallVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL);
+            int curCallVol = audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+            if (curCallVol < (maxCallVol * 4) / 5) {
+                audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, (maxCallVol * 4) / 5, 0);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public void toggleWhisperTestLoopback() {
+        if (whisperTestLoopbackActive) {
+            whisperTestLoopbackActive = false;
+            currentWhisperInputDb = 0;
+            currentWhisperOutputDb = 0;
+            addLog("🛑 Whisper Mic Test Stopped");
+            notifyListeners();
+        } else {
+            startWhisperTestLoopbackThread();
+        }
+    }
+
+    private void startWhisperTestLoopbackThread() {
+        if (whisperTestLoopbackActive) return;
+        whisperTestLoopbackActive = true;
+        applyBluetoothCallMicBoostParameters();
+        addLog("🎧 Live Whisper Test Started (Hardware AGC + NoiseSuppressor + " + (whisperGainMultiplierTenths / 10.0f) + "x Pre-Amp)");
+        notifyListeners();
+
+        new Thread(() -> {
+            int sampleRate = 16000;
+            int minBuf = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            if (minBuf <= 0) minBuf = 1280;
+            AudioRecord rec = null;
+            AudioTrack track = null;
+            AutomaticGainControl agc = null;
+            NoiseSuppressor ns = null;
+            AcousticEchoCanceler aec = null;
+
+            try {
+                rec = new AudioRecord(
+                        MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                        sampleRate,
+                        AudioFormat.CHANNEL_IN_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT,
+                        minBuf * 2
+                );
+                int sessionId = rec.getAudioSessionId();
+                if (AutomaticGainControl.isAvailable()) {
+                    agc = AutomaticGainControl.create(sessionId);
+                    if (agc != null) agc.setEnabled(true);
+                }
+                if (NoiseSuppressor.isAvailable()) {
+                    ns = NoiseSuppressor.create(sessionId);
+                    if (ns != null) ns.setEnabled(true);
+                }
+                if (AcousticEchoCanceler.isAvailable()) {
+                    aec = AcousticEchoCanceler.create(sessionId);
+                    if (aec != null) aec.setEnabled(true);
+                }
+
+                track = new AudioTrack.Builder()
+                        .setAudioAttributes(new AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_MEDIA)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .build())
+                        .setAudioFormat(new AudioFormat.Builder()
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setSampleRate(sampleRate)
+                                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                                .build())
+                        .setBufferSizeInBytes(minBuf * 2)
+                        .setTransferMode(AudioTrack.MODE_STREAM)
+                        .build();
+
+                rec.startRecording();
+                track.play();
+
+                short[] inBuf = new short[320]; // 20ms frame at 16kHz
+                short[] outBuf = new short[320];
+                double envelope = 1.0;
+
+                while (whisperTestLoopbackActive) {
+                    int n = rec.read(inBuf, 0, inBuf.length);
+                    if (n > 0) {
+                        double sumIn = 0;
+                        double sumOut = 0;
+                        float baseGain = whisperGainMultiplierTenths / 10.0f;
+
+                        for (int i = 0; i < n; i++) {
+                            double sample = inBuf[i];
+                            sumIn += sample * sample;
+
+                            // Smart Whisper Dynamic Compressor:
+                            // Boosts quiet whispers strongly, smoothly compresses loud peaks so it never clips
+                            double absVal = Math.abs(sample) / 32768.0;
+                            envelope = envelope * 0.92 + absVal * 0.08;
+                            double dynamicGain = baseGain;
+                            if (envelope < 0.08) {
+                                // Whisper zone -> extra clarity boost
+                                dynamicGain = baseGain * 1.45;
+                            } else if (envelope > 0.35) {
+                                // Loud speech -> soft limiter
+                                dynamicGain = 1.15;
+                            }
+
+                            // Noise gate for dead silence (< 80 PCM amplitude) to eliminate background hiss
+                            double boosted = (Math.abs(sample) < 75) ? (sample * 0.4) : (sample * dynamicGain);
+                            // Soft-knee tanh-like saturation limiter
+                            if (boosted > 28000) boosted = 28000 + (boosted - 28000) * 0.15;
+                            if (boosted < -28000) boosted = -28000 + (boosted + 28000) * 0.15;
+                            short clamped = (short) Math.max(-32700, Math.min(32700, (int) boosted));
+                            outBuf[i] = clamped;
+                            sumOut += (double) clamped * clamped;
+                        }
+
+                        track.write(outBuf, 0, n);
+
+                        double rmsIn = Math.sqrt(sumIn / n);
+                        double rmsOut = Math.sqrt(sumOut / n);
+                        currentWhisperInputDb = (int) Math.min(100, Math.max(0, 20.0 * Math.log10(Math.max(1.0, rmsIn)) * 1.15 - 10));
+                        currentWhisperOutputDb = (int) Math.min(100, Math.max(0, 20.0 * Math.log10(Math.max(1.0, rmsOut)) * 1.15 - 10));
+                        notifyListeners();
+                    }
+                }
+            } catch (Throwable e) {
+                addLog("⚠️ Whisper Test Error: " + e.getMessage());
+            } finally {
+                whisperTestLoopbackActive = false;
+                if (agc != null) try { agc.release(); } catch (Throwable ignored) {}
+                if (ns != null) try { ns.release(); } catch (Throwable ignored) {}
+                if (aec != null) try { aec.release(); } catch (Throwable ignored) {}
+                if (rec != null) try { rec.stop(); rec.release(); } catch (Throwable ignored) {}
+                if (track != null) try { track.stop(); track.release(); } catch (Throwable ignored) {}
+                notifyListeners();
+            }
+        }, "X20-WhisperBoostTest").start();
     }
 
     public void onMediaSessionDetected(String pkg, String title, String artist, boolean playing) {

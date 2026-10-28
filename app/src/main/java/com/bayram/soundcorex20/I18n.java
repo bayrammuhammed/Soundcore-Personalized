@@ -186,13 +186,49 @@ public class I18n {
                         "1C • التحدث المباشر ومساعد المكالمات الذكي");
             case "card_1c_sub":
                 return pick(lang,
-                        "Konuştuğunuzda veya telefon çaldığında sesi kısıp Vokal Şeffaf Moda geçer",
-                        "Switches to Vocal Transparency & ducks volume when you speak or during phone calls",
-                        "Wechselt beim Sprechen oder bei Anrufen in den Stimm-Transparenzmodus",
-                        "Cambia a Transparencia Vocal y baja el volumen al hablar o en llamadas",
+                        "Konuştuğunuzda sesi %20'ye kısıp Vokal Şeffaf Moda geçer, 5 sn sonra ANC'ye döner",
+                        "Switches to Vocal Transparency & ducks volume when you speak, restores ANC in 5s",
+                        "Wechselt beim Sprechen in den Stimm-Transparenzmodus",
+                        "Cambia a Transparencia Vocal y baja el volumen al hablar",
                         "Passe en Transparence Vocale et baisse le volume quand vous parlez",
-                        "Включает голосовой режим и приглушает музыку при разговоре или звонке",
-                        "يفعل الشفافية الصوتية ويخفض الموسيقى عند التحدث أو أثناء المكالمات");
+                        "Включает голосовой режим и приглушает музыку при разговоре",
+                        "يفعل الشفافية الصوتية ويخفض الموسيقى عند التحدث");
+            case "card_1d_title":
+                return pick(lang,
+                        "1D • Fısıltı & Arama Mikrofon Güçlendirici (AGC + HD)",
+                        "1D • Whisper & Call Mic Booster (Auto-Gain + HD)",
+                        "1D • Flüster- & Anruf-Mikrofonverstärker (AGC + HD)",
+                        "1D • Amplificador de Micrófono para Susurros y Llamadas",
+                        "1D • Amplificateur Micro Chuchotement & Appel (AGC + HD)",
+                        "1D • Усилитель микрофона для шепота и звонков (AGC)",
+                        "1D • مقوي الميكروفون للهمس والمكالمات (AGC + HD)");
+            case "card_1d_sub":
+                return pick(lang,
+                        "Aramalarda kısık sesle/fısıltıyla konuşsanız bile mikrofon kazancını (VGM 15/15 + AGC) maksimuma çıkarır",
+                        "Maximizes Bluetooth HFP mic gain (VGM 15/15 + Hardware AGC & Noise Suppression) even when whispering",
+                        "Maximiert die Bluetooth-Mikrofonverstärkung (VGM 15/15 + AGC) auch beim Flüstern",
+                        "Maximiza la ganancia del micrófono Bluetooth (VGM 15/15 + AGC) incluso al susurrar",
+                        "Maximise le gain micro Bluetooth (VGM 15/15 + AGC) même en chuchotant",
+                        "Максимизирует усиление микрофона (VGM 15/15 + AGC) даже при шепоте",
+                        "يرفع حساسية ميكروفون البلوتوث لأقصى درجة (VGM 15/15 + AGC) حتى عند الهمس");
+            case "whisper_test_on":
+                return pick(lang,
+                        "🔴 Canlı Fısıltı Testini Durdur (Şu An Kendi Sesinizi Duyuyorsunuz)",
+                        "🔴 Stop Live Whisper Test (Hearing Your Boosted Voice)",
+                        "🔴 Live-Flüstertest stoppen",
+                        "🔴 Detener prueba de susurro en vivo",
+                        "🔴 Arrêter le test de chuchotement",
+                        "🔴 Остановить тест шепота",
+                        "🔴 إيقاف اختبار الهمس المباشر");
+            case "whisper_test_off":
+                return pick(lang,
+                        "🎧 Canlı Fısıltı Testi Başlat (Kısık Konuşup Sesinizi Dinleyin)",
+                        "🎧 Start Live Whisper Test (Whisper & Hear Your Boosted Mic)",
+                        "🎧 Live-Flüstertest starten (Eigenen Ton hören)",
+                        "🎧 Iniciar prueba de susurro en vivo",
+                        "🎧 Tester le micro chuchotement en direct",
+                        "🎧 Запустить тест шепота (услышать свой голос)",
+                        "🎧 بدء اختبار الهمس المباشر (اسمع صوتك المقوى)");
             case "btn_stationary":
                 return pick(lang, "🪑 Sabit\n(Max ANC)", "🪑 Stationary\n(Max ANC)", "🪑 Sitzend\n(Max ANC)", "🪑 Quieto\n(Max ANC)", "🪑 Immobile\n(Max ANC)", "🪑 На месте\n(Макс ANC)", "🪑 ثابت\n(أقصى ANC)");
             case "btn_walking":

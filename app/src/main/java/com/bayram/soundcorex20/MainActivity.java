@@ -66,6 +66,10 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
     private Switch swSpeakToChat;
     private ProgressBar pbMicLevel;
 
+    private TextView tv1dTitle, tv1dSub, tvWhisperStatus, tvWhisperGainVal, btnWhisperTest;
+    private Switch swWhisperBoost;
+    private ProgressBar pbWhisperOut;
+
     // Equalizer Studio
     private TextView tvEqTitle, tvBassLbl;
     private Switch swBassUp;
@@ -266,6 +270,7 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         root.addView(buildAutoEqCard());
         root.addView(buildSmartActivityCard());
         root.addView(buildSpeakToChatCard());
+        root.addView(buildWhisperCallBoostCard());
 
         // 5. EQUALIZER STUDIO
         root.addView(buildEqualizerStudioCard());
@@ -716,6 +721,98 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         return card;
     }
 
+    private View buildWhisperCallBoostCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        card.setBackground(roundedBox("#11172A", "#F59E0B", 18, 1));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(12);
+        card.setLayoutParams(lp);
+
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(top);
+
+        LinearLayout txtCol = new LinearLayout(this);
+        txtCol.setOrientation(LinearLayout.VERTICAL);
+        top.addView(txtCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        tv1dTitle = new TextView(this);
+        tv1dTitle.setTextColor(Color.parseColor("#FBBF24"));
+        tv1dTitle.setTextSize(14);
+        tv1dTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        txtCol.addView(tv1dTitle);
+
+        tv1dSub = new TextView(this);
+        tv1dSub.setTextColor(Color.parseColor("#94A3B8"));
+        tv1dSub.setTextSize(11);
+        txtCol.addView(tv1dSub);
+
+        swWhisperBoost = new Switch(this);
+        swWhisperBoost.setChecked(true);
+        swWhisperBoost.setOnCheckedChangeListener((b, checked) -> {
+            if (!updatingUiProgrammatically) engine.setWhisperCallBoostEnabled(checked);
+        });
+        top.addView(swWhisperBoost);
+
+        tvWhisperStatus = new TextView(this);
+        tvWhisperStatus.setPadding(dp(10), dp(8), dp(10), dp(8));
+        tvWhisperStatus.setBackground(roundedBox("#182238", "#263554", 10, 1));
+        tvWhisperStatus.setTextColor(Color.parseColor("#FDE68A"));
+        tvWhisperStatus.setTextSize(11);
+        LinearLayout.LayoutParams wsLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wsLp.topMargin = dp(8);
+        card.addView(tvWhisperStatus, wsLp);
+
+        pbWhisperOut = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        pbWhisperOut.setMax(100);
+        pbWhisperOut.setProgress(0);
+        pbWhisperOut.setProgressTintList(ColorStateList.valueOf(Color.parseColor("#F59E0B")));
+        LinearLayout.LayoutParams pwLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(8));
+        pwLp.topMargin = dp(6);
+        card.addView(pbWhisperOut, pwLp);
+
+        LinearLayout gainRow = new LinearLayout(this);
+        gainRow.setOrientation(LinearLayout.HORIZONTAL);
+        gainRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams grLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        grLp.topMargin = dp(8);
+        card.addView(gainRow, grLp);
+
+        tvWhisperGainVal = new TextView(this);
+        tvWhisperGainVal.setTextColor(Color.parseColor("#94A3B8"));
+        tvWhisperGainVal.setTextSize(11);
+        gainRow.addView(tvWhisperGainVal);
+
+        SeekBar sbWhisper = new SeekBar(this);
+        sbWhisper.setMax(40); // 10..50 tenths (1.0x..5.0x)
+        sbWhisper.setProgress(32 - 10);
+        sbWhisper.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) engine.setWhisperGainMultiplierTenths(10 + progress);
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        gainRow.addView(sbWhisper, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        btnWhisperTest = createSmallSubBtn("");
+        LinearLayout.LayoutParams btLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        btLp.topMargin = dp(8);
+        btnWhisperTest.setOnClickListener(v -> engine.toggleWhisperTestLoopback());
+        card.addView(btnWhisperTest, btLp);
+
+        return card;
+    }
+
     private View buildEqualizerStudioCard() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -936,6 +1033,8 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
             tv1bSub.setText(I18n.t("card_1b_sub"));
             tv1cTitle.setText(I18n.t("card_1c_title"));
             tv1cSub.setText(I18n.t("card_1c_sub"));
+            tv1dTitle.setText(I18n.t("card_1d_title"));
+            tv1dSub.setText(I18n.t("card_1d_sub"));
 
             btnActStationary.setText(I18n.t("btn_stationary"));
             btnActWalking.setText(I18n.t("btn_walking"));
@@ -1058,6 +1157,30 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
                         "Мониторинг речи: Выкл",
                         "مراقبة الصوت: متوقفة"));
                 tvSpeakStatus.setTextColor(Color.parseColor("#94A3B8"));
+            }
+
+            // #1D Whisper & Call Mic Booster
+            swWhisperBoost.setChecked(engine.isWhisperCallBoostEnabled());
+            float mult = engine.getWhisperGainMultiplierTenths() / 10.0f;
+            tvWhisperGainVal.setText(String.format(Locale.US, "Gain: %.1fx (+%.0f dB)", mult, 20.0 * Math.log10(mult)));
+            boolean wActive = engine.isWhisperTestLoopbackActive();
+            btnWhisperTest.setText(wActive ? I18n.t("whisper_test_on") : I18n.t("whisper_test_off"));
+            styleSelectableButton(btnWhisperTest, wActive, "#F59E0B");
+            if (wActive) {
+                pbWhisperOut.setProgress(engine.getCurrentWhisperOutputDb());
+                tvWhisperStatus.setText(String.format(Locale.US,
+                        "🎙️ Fısıltı Girişi: %d dB ➡️ Güçlendirilmiş Çıkış: %d dB (AGC + Gürültü Filtresi Aktif)",
+                        engine.getCurrentWhisperInputDb(), engine.getCurrentWhisperOutputDb()));
+            } else {
+                pbWhisperOut.setProgress(engine.isWhisperCallBoostEnabled() ? 100 : 0);
+                tvWhisperStatus.setText(I18n.pick(lang,
+                        "⚡ HFP Mikrofon Kazancı: 15/15 (Maks) • HD Ses (16kHz mSBC) • Donanım AGC + Rüzgar Filtresi: HAZIR",
+                        "⚡ HFP Mic Gain: 15/15 (Max) • HD Voice (16kHz mSBC) • Hardware AGC + Wind Filter: READY",
+                        "⚡ HFP-Mikrofon: 15/15 (Max) • HD-Voice (16kHz) • Hardware-AGC: BEREIT",
+                        "⚡ Ganancia Mic HFP: 15/15 (Máx) • Voz HD (16kHz) • AGC Hardware: LISTO",
+                        "⚡ Gain Micro HFP: 15/15 (Max) • Voix HD (16kHz) • AGC Matériel: PRÊT",
+                        "⚡ Усиление микрофона HFP: 15/15 (Макс) • HD Voice • Аппаратный AGC: ГОТОВ",
+                        "⚡ حساسية ميكروفون HFP: 15/15 (الأقصى) • صوت HD • AGC المادي: جاهز"));
             }
 
             // Equalizer Studio
