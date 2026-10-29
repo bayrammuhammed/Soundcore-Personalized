@@ -319,6 +319,172 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         notifyListeners();
     }
 
+    private String lastSettingsActionBanner = "";
+
+    public String getLastSettingsActionBanner() {
+        if (lastSettingsActionBanner == null || lastSettingsActionBanner.isEmpty()) {
+            boolean hasFav = prefs.getBoolean("has_user_favorite", false);
+            String lang = I18n.getActiveLang();
+            if (hasFav) {
+                return I18n.pick(lang,
+                        "✅ Kayıtlı favori profiliniz hazır • İstediğiniz zaman dönebilirsiniz",
+                        "✅ Saved favorite profile ready • Restore anytime",
+                        "✅ Gespeichertes Favoritenprofil bereit",
+                        "✅ Perfil favorito guardado listo",
+                        "✅ Profil favori sauvegardé prêt",
+                        "✅ Любимый профиль сохранен и готов",
+                        "✅ الملف المفضل محفوظ وجاهز");
+            }
+            return I18n.pick(lang,
+                    "✨ Aktif Profil: Altın Sinema & Otomatik Akıllı Mod (Fabrika Varsayılanı)",
+                    "✨ Active Profile: Golden Cinema & Smart Auto Mode (Factory Default)",
+                    "✨ Aktives Profil: Golden-Kino & Smart-Auto (Standard)",
+                    "✨ Perfil Activo: Cine Dorado y Modo Inteligente (Predeterminado)",
+                    "✨ Profil Actif : Cinéma Doré & Mode Auto (Par Défaut)",
+                    "✨ Активный профиль: Кино и Умный авто-режим (По умолчанию)",
+                    "✨ الملف النشط: السينما الذهبية والوضع الذكي (الافتراضي)");
+        }
+        return lastSettingsActionBanner;
+    }
+
+    /**
+     * Saves the user's current EQ sliders, Cinema Depth, ANC mode, Whisper Mic gain, and automation switches
+     * into SharedPreferences as their personal favorite profile.
+     */
+    public synchronized void saveUserFavoriteProfile() {
+        SharedPreferences.Editor ed = prefs.edit();
+        ed.putBoolean("has_user_favorite", true);
+        ed.putInt("fav_preset_idx", currentPresetIndex);
+        ed.putBoolean("fav_cinema_depth", cinemaDepthEnabled);
+        for (int i = 0; i < 8; i++) {
+            ed.putInt("fav_eq_band_" + i, state.eqBandsTenthsDb[i]);
+        }
+        ed.putInt("fav_ambient_mode", state.ambientMode);
+        ed.putInt("fav_anc_level", state.manualAncStrength);
+        ed.putBoolean("fav_wind_ns", state.windNoiseSuppression);
+        ed.putInt("fav_trans_type", state.transparencyMode);
+        ed.putBoolean("fav_auto_eq", autoEqByAppEnabled);
+        ed.putBoolean("fav_smart_act", smartActivityAncEnabled);
+        ed.putBoolean("fav_speak_chat", speakToChatEnabled);
+        ed.putInt("fav_speak_thresh", speakThresholdLevel);
+        ed.putBoolean("fav_whisper_boost", whisperCallBoostEnabled);
+        ed.putInt("fav_whisper_gain", whisperGainMultiplierTenths);
+        ed.apply();
+
+        String lang = I18n.getActiveLang();
+        lastSettingsActionBanner = I18n.pick(lang,
+                "⭐ Sevdiğiniz ayarlar başarıyla kaydedildi! (EQ + ANC + Mikrofon + Otomasyon)",
+                "⭐ Your favorite settings have been saved! (EQ + ANC + Mic + Automation)",
+                "⭐ Ihre Lieblingseinstellungen wurden gespeichert!",
+                "⭐ ¡Tus ajustes favoritos han sido guardados!",
+                "⭐ Vos paramètres favoris ont été sauvegardés !",
+                "⭐ Ваши любимые настройки успешно сохранены!",
+                "⭐ تم حفظ إعداداتك المفضلة بنجاح!");
+        addLog(lastSettingsActionBanner);
+        notifyListeners();
+    }
+
+    /**
+     * Restores the user's saved favorite profile from SharedPreferences (or Factory Defaults if none saved yet).
+     */
+    public synchronized void restoreUserFavoriteProfile() {
+        if (!prefs.getBoolean("has_user_favorite", false)) {
+            resetToFactoryDefaults();
+            return;
+        }
+        this.masterAppEnabled = true;
+        prefs.edit().putBoolean("master_app_enabled", true).apply();
+
+        this.currentPresetIndex = prefs.getInt("fav_preset_idx", 0);
+        this.cinemaDepthEnabled = prefs.getBoolean("fav_cinema_depth", true);
+        for (int i = 0; i < 8; i++) {
+            state.eqBandsTenthsDb[i] = prefs.getInt("fav_eq_band_" + i, EQ_PRESETS[0][i]);
+        }
+        state.ambientMode = prefs.getInt("fav_ambient_mode", SoundcoreProtocol.AMBIENT_ANC);
+        state.manualAncStrength = prefs.getInt("fav_anc_level", SoundcoreProtocol.ANC_STRENGTH_STRONG);
+        state.windNoiseSuppression = prefs.getBoolean("fav_wind_ns", false);
+        state.transparencyMode = prefs.getInt("fav_trans_type", SoundcoreProtocol.TRANS_FULLY_TRANSPARENT);
+
+        this.autoEqByAppEnabled = prefs.getBoolean("fav_auto_eq", true);
+        this.smartActivityAncEnabled = prefs.getBoolean("fav_smart_act", true);
+        this.speakToChatEnabled = prefs.getBoolean("fav_speak_chat", false);
+        this.speakThresholdLevel = prefs.getInt("fav_speak_thresh", 58);
+        this.whisperCallBoostEnabled = prefs.getBoolean("fav_whisper_boost", true);
+        this.whisperGainMultiplierTenths = prefs.getInt("fav_whisper_gain", 32);
+
+        applySystemAudioFx(state.eqBandsTenthsDb, cinemaDepthEnabled);
+        applyBluetoothCallMicBoostParameters();
+        byte[] eqPkt = SoundcoreProtocol.buildSetEqualizerPacket(0xFEFE, state.eqBandsTenthsDb);
+        sendPacket(eqPkt, "📂 Restore Favorite EQ");
+        setAmbientMode(state.ambientMode, "📂 Restore Favorite ANC");
+
+        String lang = I18n.getActiveLang();
+        lastSettingsActionBanner = I18n.pick(lang,
+                "📂 Kayıtlı favori ayarlarınız geri yüklendi!",
+                "📂 Your saved favorite settings have been restored!",
+                "📂 Ihr gespeichertes Favoritenprofil wurde geladen!",
+                "📂 ¡Tus ajustes favoritos han sido restaurados!",
+                "📂 Vos paramètres favoris ont été restaurés !",
+                "📂 Ваши любимые настройки восстановлены!",
+                "📂 تمت استعادة إعداداتك المفضلة المحفوظة!");
+        addLog(lastSettingsActionBanner);
+        notifyListeners();
+    }
+
+    /**
+     * Resets all settings, EQ sliders, ANC modes, Whisper Mic Booster, and Automation rules
+     * back to the golden Factory Defaults.
+     */
+    public synchronized void resetToFactoryDefaults() {
+        this.masterAppEnabled = true;
+        this.autoConnectOnBt = true;
+        prefs.edit()
+                .putBoolean("master_app_enabled", true)
+                .putBoolean("auto_connect_on_bt", true)
+                .apply();
+
+        this.simulationOverrideActive = false;
+        this.currentPresetIndex = 0; // 🎬 Sinema & Doğal Sahne
+        this.cinemaDepthEnabled = true;
+        for (int i = 0; i < 8; i++) {
+            state.eqBandsTenthsDb[i] = EQ_PRESETS[0][i];
+        }
+        state.ambientMode = SoundcoreProtocol.AMBIENT_ANC;
+        state.manualAncStrength = SoundcoreProtocol.ANC_STRENGTH_STRONG;
+        state.windNoiseSuppression = false;
+        state.transparencyMode = SoundcoreProtocol.TRANS_FULLY_TRANSPARENT;
+
+        this.autoEqByAppEnabled = true;
+        this.smartActivityAncEnabled = true;
+        this.speakToChatEnabled = false;
+        this.speakThreadRunning = false;
+        this.speakThresholdLevel = 58;
+        this.whisperCallBoostEnabled = true;
+        this.whisperGainMultiplierTenths = 32; // 3.2x
+        this.whisperTestLoopbackActive = false;
+
+        initSystemAudioFx();
+        applyBluetoothCallMicBoostParameters();
+        startSensors();
+        if (!state.connected) {
+            connectToEarbuds();
+        }
+        applyEqPreset(0, true, "🔄 Factory Default EQ (Sinema & Doğal Sahne)");
+        setAmbientMode(SoundcoreProtocol.AMBIENT_ANC, "🔄 Factory Default ANC (Max)");
+
+        String lang = I18n.getActiveLang();
+        lastSettingsActionBanner = I18n.pick(lang,
+                "🔄 Tüm ayarlar ilk günkü Altın Varsayılan (Default) değerlere sıfırlandı!",
+                "🔄 All settings reset to Golden Factory Defaults!",
+                "🔄 Alle Einstellungen auf Werksstandard zurückgesetzt!",
+                "🔄 ¡Todos los ajustes restablecidos a los valores predeterminados!",
+                "🔄 Tous les paramètres ont été réinitialisés par défaut !",
+                "🔄 Все настройки сброшены к заводским значениям по умолчанию!",
+                "🔄 تمت إعادة تعيين جميع الإعدادات إلى الوضع الافتراضي الأصلي!");
+        addLog(lastSettingsActionBanner);
+        notifyListeners();
+    }
+
     public String getLastTxHex() { return lastTxHex; }
     public String getLastRxHex() { return lastRxHex; }
     public boolean isBassUpEnabled() { return cinemaDepthEnabled; }

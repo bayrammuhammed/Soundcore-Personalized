@@ -300,6 +300,51 @@ public class I18n {
                         "⚡ Réactiver l'App et Connecter",
                         "⚡ Включить приложение и подключиться",
                         "⚡ إعادة تفعيل التطبيق والاتصال");
+            case "settings_card_title":
+                return pick(lang,
+                        "⚙️ AYARLAR, FAVORİ PROFİL & VARSAYILANA SIFIRLAMA",
+                        "⚙️ SETTINGS, FAVORITE PROFILE & FACTORY RESET",
+                        "⚙️ EINSTELLUNGEN, FAVORITEN & WERKSSTANDARDS",
+                        "⚙️ AJUSTES, PERFIL FAVORITO Y RESTABLECER",
+                        "⚙️ PARAMÈTRES, PROFIL FAVORI & RÉINITIALISATION",
+                        "⚙️ НАСТРОЙКИ, ЛЮБИМЫЙ ПРОФИЛЬ И СБРОС",
+                        "⚙️ الإعدادات، الملف المفضل وإعادة الضبط الافتراضي");
+            case "settings_card_sub":
+                return pick(lang,
+                        "Ayarları kurcaladığınızda tek tuşla ilk günkü altın varsayılan (Default) ayarlara dönebilir veya kendi sevdiğiniz ayarı kaydedebilirsiniz.",
+                        "Changed too many sliders? Restore the golden factory defaults with one tap, or save & load your personal favorite setup.",
+                        "Mit einem Tippen auf die optimalen Standardwerte zurücksetzen oder Ihr persönliches Lieblingsprofil speichern.",
+                        "Restaura los valores predeterminados óptimos con un toque o guarda y carga tu configuración favorita.",
+                        "Restaurez les paramètres par défaut optimaux en un clic ou sauvegardez votre profil favori.",
+                        "Верните эталонные заводские настройки одним нажатием или сохраните свой любимый профиль.",
+                        "استعد الإعدادات الافتراضية المثالية بضغطة واحدة أو احفظ واسترجع إعداداتك المفضلة.");
+            case "btn_save_fav":
+                return pick(lang,
+                        "⭐ Sevdiğim Ayarı Kaydet",
+                        "⭐ Save My Favorite",
+                        "⭐ Favorit Speichern",
+                        "⭐ Guardar Favorito",
+                        "⭐ Sauvegarder Favori",
+                        "⭐ Сохранить профиль",
+                        "⭐ حفظ إعدادي المفضل");
+            case "btn_load_fav":
+                return pick(lang,
+                        "📂 Sevdiğim Ayara Dön",
+                        "📂 Load My Favorite",
+                        "📂 Favorit Laden",
+                        "📂 Cargar Favorito",
+                        "📂 Charger Favori",
+                        "📂 Загрузить профиль",
+                        "📂 استرجاع المفضل");
+            case "btn_reset_default":
+                return pick(lang,
+                        "🔄 Varsayılan (Default) Ayarlara Sıfırla",
+                        "🔄 Reset All Settings to Factory Default",
+                        "🔄 Auf Standardeinstellungen (Default) Zurücksetzen",
+                        "🔄 Restablecer a Valores Predeterminados (Default)",
+                        "🔄 Réinitialiser aux Paramètres par Défaut",
+                        "🔄 Сбросить все настройки по умолчанию (Default)",
+                        "🔄 إعادة تعيين كافة الإعدادات إلى الوضع الافتراضي (Default)");
             default:
                 return key;
         }

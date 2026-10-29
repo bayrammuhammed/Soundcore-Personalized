@@ -87,6 +87,10 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
     private final TextView[] eqValueLabels = new TextView[8];
     private boolean updatingUiProgrammatically = false;
 
+    // Settings, Favorite Profile & Factory Reset Card
+    private TextView tvSettingsTitle, tvSettingsSub, tvSettingsStatusBanner;
+    private TextView btnSaveFavorite, btnLoadFavorite, btnResetFactoryDefaults, btnTopQuickReset;
+
     // Telemetry Console
     private TextView tvTelemetryTitle, tvTxRxHex, tvTelemetryLogs;
 
@@ -306,10 +310,80 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         // 5. EQUALIZER STUDIO
         root.addView(buildEqualizerStudioCard());
 
+        // 5.5 SETTINGS, FAVORITE PROFILE & FACTORY RESET CARD
+        root.addView(buildSettingsAndResetCard());
+
         // 6. TELEMETRY CONSOLE
         root.addView(buildTelemetryConsoleCard());
 
         return scroll;
+    }
+
+    private View buildSettingsAndResetCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(14), dp(16), dp(16));
+        card.setBackground(roundedBox("#11172A", "#38BDF8", 18, 1));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(14);
+        card.setLayoutParams(lp);
+
+        tvSettingsTitle = new TextView(this);
+        tvSettingsTitle.setTextColor(Color.parseColor("#38BDF8"));
+        tvSettingsTitle.setTextSize(13);
+        tvSettingsTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        card.addView(tvSettingsTitle);
+
+        tvSettingsSub = new TextView(this);
+        tvSettingsSub.setTextColor(Color.parseColor("#94A3B8"));
+        tvSettingsSub.setTextSize(11);
+        tvSettingsSub.setPadding(0, dp(4), 0, dp(8));
+        card.addView(tvSettingsSub);
+
+        tvSettingsStatusBanner = new TextView(this);
+        tvSettingsStatusBanner.setTextColor(Color.parseColor("#34D399"));
+        tvSettingsStatusBanner.setTextSize(11);
+        tvSettingsStatusBanner.setTypeface(Typeface.DEFAULT_BOLD);
+        tvSettingsStatusBanner.setPadding(dp(10), dp(8), dp(10), dp(8));
+        tvSettingsStatusBanner.setBackground(roundedBox("#0B1324", "#1E293B", 10, 1));
+        card.addView(tvSettingsStatusBanner);
+
+        // Row: Save Favorite & Load Favorite
+        LinearLayout favRow = new LinearLayout(this);
+        favRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams frLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        frLp.topMargin = dp(10);
+        card.addView(favRow, frLp);
+
+        btnSaveFavorite = createSmallSubBtn("");
+        btnSaveFavorite.setBackground(roundedBox("#1E293B", "#FBBF24", 12, 1));
+        btnSaveFavorite.setTextColor(Color.parseColor("#FDE68A"));
+        btnSaveFavorite.setOnClickListener(v -> engine.saveUserFavoriteProfile());
+
+        btnLoadFavorite = createSmallSubBtn("");
+        btnLoadFavorite.setBackground(roundedBox("#1E293B", "#34D399", 12, 1));
+        btnLoadFavorite.setTextColor(Color.parseColor("#A7F3D0"));
+        btnLoadFavorite.setOnClickListener(v -> engine.restoreUserFavoriteProfile());
+
+        LinearLayout.LayoutParams b1Lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        b1Lp.rightMargin = dp(6);
+        LinearLayout.LayoutParams b2Lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        favRow.addView(btnSaveFavorite, b1Lp);
+        favRow.addView(btnLoadFavorite, b2Lp);
+
+        // Full-width button: Reset to Factory Default
+        btnResetFactoryDefaults = createPillButton("");
+        btnResetFactoryDefaults.setBackground(roundedBox("#172554", "#00E5FF", 12, 1));
+        btnResetFactoryDefaults.setTextColor(Color.parseColor("#00E5FF"));
+        LinearLayout.LayoutParams rstLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rstLp.topMargin = dp(10);
+        btnResetFactoryDefaults.setOnClickListener(v -> engine.resetToFactoryDefaults());
+        card.addView(btnResetFactoryDefaults, rstLp);
+
+        return card;
     }
 
     private View buildPowerControlCard() {
@@ -366,11 +440,18 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         });
         row2.addView(swAutoBt);
 
-        // Row 3: Quick "Disconnect & Exit App" or "Re-enable" button
+        // Row 3: Quick "Disconnect & Exit App" + "🔄 Default" shortcut button
+        LinearLayout row3 = new LinearLayout(this);
+        row3.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams r3Lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        r3Lp.topMargin = dp(8);
+        cardPowerControl.addView(row3, r3Lp);
+
         btnPowerStopOrResume = createSmallSubBtn("");
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        btnLp.topMargin = dp(8);
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.35f);
+        btnLp.rightMargin = dp(6);
         btnPowerStopOrResume.setOnClickListener(v -> {
             if (engine.isMasterAppEnabled()) {
                 engine.setMasterAppEnabled(false);
@@ -383,7 +464,15 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
                 engine.setMasterAppEnabled(true);
             }
         });
-        cardPowerControl.addView(btnPowerStopOrResume, btnLp);
+        row3.addView(btnPowerStopOrResume, btnLp);
+
+        btnTopQuickReset = createSmallSubBtn("🔄 Default");
+        btnTopQuickReset.setBackground(roundedBox("#172554", "#38BDF8", 12, 1));
+        btnTopQuickReset.setTextColor(Color.parseColor("#38BDF8"));
+        LinearLayout.LayoutParams qrLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.65f);
+        btnTopQuickReset.setOnClickListener(v -> engine.resetToFactoryDefaults());
+        row3.addView(btnTopQuickReset, qrLp);
 
         return cardPowerControl;
     }
@@ -1149,6 +1238,12 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
 
             tvEqTitle.setText(I18n.t("eq_section_title"));
             tvBassLbl.setText(I18n.t("cinema_boost_label"));
+            tvSettingsTitle.setText(I18n.t("settings_card_title"));
+            tvSettingsSub.setText(I18n.t("settings_card_sub"));
+            tvSettingsStatusBanner.setText(engine.getLastSettingsActionBanner());
+            btnSaveFavorite.setText(I18n.t("btn_save_fav"));
+            btnLoadFavorite.setText(I18n.t("btn_load_fav"));
+            btnResetFactoryDefaults.setText(I18n.t("btn_reset_default"));
             tvTelemetryTitle.setText(I18n.t("telemetry_title"));
 
             // Dynamic state
