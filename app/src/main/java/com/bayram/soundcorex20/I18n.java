@@ -255,6 +255,51 @@ public class I18n {
                         "📡 CONSOLE DE TÉLÉMÉTRIE BLUETOOTH RFCOMM & IOT",
                         "📡 КОНСОЛЬ ТЕЛЕМЕТРИИ BLUETOOTH RFCOMM И IOT",
                         "📡 وحدة القياس عن بعد عبر بلوتوث RFCOMM وإنترنت الأشياء");
+            case "power_active_lbl":
+                return pick(lang,
+                        "🟢 Uygulama Aktif (Kulaklık Kontrolü Açık)",
+                        "🟢 App Active (Earbud Control ON)",
+                        "🟢 App Aktiv (Kopfhörersteuerung AN)",
+                        "🟢 App Activa (Control de Auriculares ON)",
+                        "🟢 Application Active (Contrôle écouteurs ON)",
+                        "🟢 Приложение активно (Управление ВКЛ)",
+                        "🟢 التطبيق نشط (التحكم بالسماعة مفعل)");
+            case "power_off_lbl":
+                return pick(lang,
+                        "⛔ Uygulama Devre Dışı (Kulaklık Serbest / Standart Mod)",
+                        "⛔ App Disabled (Earbuds Free / Stock Mode)",
+                        "⛔ App Deaktiviert (Kopfhörer frei / Standard)",
+                        "⛔ App Desactivada (Auriculares libres / Estándar)",
+                        "⛔ App Désactivée (Écouteurs libres / Standard)",
+                        "⛔ Приложение отключено (Наушники свободны)",
+                        "⛔ التطبيق معطل (السماعة حرة / الوضع العادي)");
+            case "auto_bt_lbl":
+                return pick(lang,
+                        "🔗 Bluetooth Bağlandığında Otomatik Devreye Gir",
+                        "🔗 Auto-Activate When Bluetooth Connects",
+                        "🔗 Automatisch aktivieren bei Bluetooth-Verbindung",
+                        "🔗 Activar automáticamente al conectar Bluetooth",
+                        "🔗 Activer automatiquement à la connexion Bluetooth",
+                        "🔗 Автозапуск при подключении Bluetooth",
+                        "🔗 التفعيل التلقائي عند اتصال البلوتوث");
+            case "btn_power_stop":
+                return pick(lang,
+                        "⏻ Uygulamayı Kapat & Çık (Bağlantıyı Kes)",
+                        "⏻ Disconnect & Exit App (Turn Off)",
+                        "⏻ App Beenden & Trennen",
+                        "⏻ Desconectar y Salir de la App",
+                        "⏻ Déconnecter et Quitter l'App",
+                        "⏻ Отключить и Выйти из приложения",
+                        "⏻ قطع الاتصال وإغلاق التطبيق");
+            case "btn_power_resume":
+                return pick(lang,
+                        "⚡ Uygulamayı Yeniden Başlat & Bağlan",
+                        "⚡ Re-Enable App & Connect",
+                        "⚡ App Aktivieren & Verbinden",
+                        "⚡ Reactivar App y Conectar",
+                        "⚡ Réactiver l'App et Connecter",
+                        "⚡ Включить приложение и подключиться",
+                        "⚡ إعادة تفعيل التطبيق والاتصال");
             default:
                 return key;
         }

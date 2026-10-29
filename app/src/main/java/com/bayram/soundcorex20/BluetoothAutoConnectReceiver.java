@@ -23,6 +23,9 @@ public class BluetoothAutoConnectReceiver extends BroadcastReceiver {
         if (intent == null || intent.getAction() == null) return;
         String action = intent.getAction();
         SmartAutomationEngine engine = SmartAutomationEngine.getInstance(context.getApplicationContext());
+        if (!engine.isMasterAppEnabled() || !engine.isAutoConnectOnBt()) {
+            return;
+        }
 
         if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)) {
             BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);

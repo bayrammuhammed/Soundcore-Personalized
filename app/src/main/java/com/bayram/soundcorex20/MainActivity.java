@@ -37,8 +37,17 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
     private TextView tvAppTitle;
     private TextView tvConnStatus;
     private TextView btnReconnect;
+    private TextView btnHeaderPower;
     private TextView btnGrantNotifAccess;
     private final TextView[] langButtons = new TextView[I18n.SUPPORTED_CODES.length];
+
+    // Master Power & Auto-Connect Card
+    private LinearLayout cardPowerControl;
+    private TextView tvMasterPowerLbl;
+    private Switch swMasterPower;
+    private TextView tvAutoBtLbl;
+    private Switch swAutoBt;
+    private TextView btnPowerStopOrResume;
 
     // Device Hero Card
     private TextView tvModelName;
@@ -200,10 +209,29 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         btnReconnect.setTextColor(Color.parseColor("#00E5FF"));
         btnReconnect.setTextSize(11);
         btnReconnect.setTypeface(Typeface.DEFAULT_BOLD);
-        btnReconnect.setPadding(dp(12), dp(8), dp(12), dp(8));
+        btnReconnect.setPadding(dp(10), dp(8), dp(10), dp(8));
         btnReconnect.setBackground(roundedBox("#112233", "#00E5FF", 12, 1));
-        btnReconnect.setOnClickListener(v -> engine.connectToEarbuds());
+        btnReconnect.setOnClickListener(v -> {
+            if (!engine.isMasterAppEnabled()) {
+                engine.setMasterAppEnabled(true);
+            } else {
+                engine.connectToEarbuds();
+            }
+        });
         header.addView(btnReconnect);
+
+        btnHeaderPower = new TextView(this);
+        btnHeaderPower.setText("⏻");
+        btnHeaderPower.setTextColor(Color.parseColor("#FFFFFF"));
+        btnHeaderPower.setTextSize(12);
+        btnHeaderPower.setTypeface(Typeface.DEFAULT_BOLD);
+        btnHeaderPower.setPadding(dp(10), dp(8), dp(10), dp(8));
+        btnHeaderPower.setBackground(roundedBox("#7F1D1D", "#F87171", 12, 1));
+        LinearLayout.LayoutParams hpLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hpLp.leftMargin = dp(6);
+        btnHeaderPower.setOnClickListener(v -> engine.setMasterAppEnabled(!engine.isMasterAppEnabled()));
+        header.addView(btnHeaderPower, hpLp);
 
         // 1.5 MULTI-LANGUAGE BAR (Auto / TR / EN / DE / ES / FR / RU / AR)
         HorizontalScrollView langScroll = new HorizontalScrollView(this);
@@ -231,6 +259,9 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
             langButtons[i] = pill;
             langRow.addView(pill, pLp);
         }
+
+        // 1.8 MASTER POWER & AUTO-CONNECT CONTROL CARD
+        root.addView(buildPowerControlCard());
 
         // Self-service Notification Listener permission banner
         btnGrantNotifAccess = new TextView(this);
@@ -279,6 +310,82 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
         root.addView(buildTelemetryConsoleCard());
 
         return scroll;
+    }
+
+    private View buildPowerControlCard() {
+        cardPowerControl = new LinearLayout(this);
+        cardPowerControl.setOrientation(LinearLayout.VERTICAL);
+        cardPowerControl.setPadding(dp(14), dp(12), dp(14), dp(12));
+        cardPowerControl.setBackground(roundedBox("#11172A", "#1E293B", 16, 1));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(10);
+        cardPowerControl.setLayoutParams(lp);
+
+        // Row 1: Master App Power Switch (ON/OFF)
+        LinearLayout row1 = new LinearLayout(this);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        row1.setGravity(Gravity.CENTER_VERTICAL);
+        cardPowerControl.addView(row1);
+
+        tvMasterPowerLbl = new TextView(this);
+        tvMasterPowerLbl.setTextColor(Color.parseColor("#34D399"));
+        tvMasterPowerLbl.setTextSize(12);
+        tvMasterPowerLbl.setTypeface(Typeface.DEFAULT_BOLD);
+        row1.addView(tvMasterPowerLbl, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        swMasterPower = new Switch(this);
+        swMasterPower.setChecked(engine.isMasterAppEnabled());
+        swMasterPower.setOnCheckedChangeListener((btn, checked) -> {
+            if (!updatingUiProgrammatically) {
+                engine.setMasterAppEnabled(checked);
+            }
+        });
+        row1.addView(swMasterPower);
+
+        // Row 2: Auto-Connect on Bluetooth Switch
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        row2.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams r2Lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        r2Lp.topMargin = dp(6);
+        cardPowerControl.addView(row2, r2Lp);
+
+        tvAutoBtLbl = new TextView(this);
+        tvAutoBtLbl.setTextColor(Color.parseColor("#94A3B8"));
+        tvAutoBtLbl.setTextSize(11);
+        row2.addView(tvAutoBtLbl, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        swAutoBt = new Switch(this);
+        swAutoBt.setChecked(engine.isAutoConnectOnBt());
+        swAutoBt.setOnCheckedChangeListener((btn, checked) -> {
+            if (!updatingUiProgrammatically) {
+                engine.setAutoConnectOnBt(checked);
+            }
+        });
+        row2.addView(swAutoBt);
+
+        // Row 3: Quick "Disconnect & Exit App" or "Re-enable" button
+        btnPowerStopOrResume = createSmallSubBtn("");
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        btnLp.topMargin = dp(8);
+        btnPowerStopOrResume.setOnClickListener(v -> {
+            if (engine.isMasterAppEnabled()) {
+                engine.setMasterAppEnabled(false);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    finishAndRemoveTask();
+                } else {
+                    finish();
+                }
+            } else {
+                engine.setMasterAppEnabled(true);
+            }
+        });
+        cardPowerControl.addView(btnPowerStopOrResume, btnLp);
+
+        return cardPowerControl;
     }
 
     private View buildHeroDeviceCard() {
@@ -1046,8 +1153,33 @@ public class MainActivity extends Activity implements SmartAutomationEngine.List
 
             // Dynamic state
             SoundcoreProtocol.DeviceState st = engine.getState();
+            boolean masterOn = engine.isMasterAppEnabled();
+            swMasterPower.setChecked(masterOn);
+            swAutoBt.setChecked(engine.isAutoConnectOnBt());
+            tvAutoBtLbl.setText(I18n.t("auto_bt_lbl"));
+
+            if (masterOn) {
+                tvMasterPowerLbl.setText(I18n.t("power_active_lbl"));
+                tvMasterPowerLbl.setTextColor(Color.parseColor("#34D399"));
+                cardPowerControl.setBackground(roundedBox("#11172A", "#1E293B", 16, 1));
+                btnHeaderPower.setBackground(roundedBox("#7F1D1D", "#F87171", 12, 1));
+                btnPowerStopOrResume.setText(I18n.t("btn_power_stop"));
+                btnPowerStopOrResume.setBackground(roundedBox("#450A0A", "#F87171", 12, 1));
+                btnPowerStopOrResume.setTextColor(Color.parseColor("#FCA5A5"));
+            } else {
+                tvMasterPowerLbl.setText(I18n.t("power_off_lbl"));
+                tvMasterPowerLbl.setTextColor(Color.parseColor("#F87171"));
+                cardPowerControl.setBackground(roundedBox("#281117", "#F87171", 16, 1));
+                btnHeaderPower.setBackground(roundedBox("#064E3B", "#34D399", 12, 1));
+                btnPowerStopOrResume.setText(I18n.t("btn_power_resume"));
+                btnPowerStopOrResume.setBackground(roundedBox("#064E3B", "#34D399", 12, 1));
+                btnPowerStopOrResume.setTextColor(Color.parseColor("#6EE7B7"));
+            }
+
             tvConnStatus.setText(engine.getConnectionStatusText());
-            tvConnStatus.setTextColor(st.connected ? Color.parseColor("#34D399") : Color.parseColor("#FBBF24"));
+            tvConnStatus.setTextColor(!masterOn
+                    ? Color.parseColor("#F87171")
+                    : (st.connected ? Color.parseColor("#34D399") : Color.parseColor("#FBBF24")));
 
             if (tvModelName != null && st.deviceName != null) {
                 tvModelName.setText(st.deviceName);

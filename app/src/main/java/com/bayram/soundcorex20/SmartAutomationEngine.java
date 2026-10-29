@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -121,6 +122,11 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     private long lastSpeechDetectedTimeMs = 0L;
     private boolean inPhoneCallMode = false;
 
+    // Master Power & Auto-Connect Controls (allows user to completely disable the app when desired)
+    private final SharedPreferences prefs;
+    private boolean masterAppEnabled = true;
+    private boolean autoConnectOnBt = true;
+
     // #1D: Whisper & Call Mic Booster (VGM 15/15 + Hardware AGC + NS + AEC)
     private boolean whisperCallBoostEnabled = true;
     private int whisperGainMultiplierTenths = 32; // 3.2x boost for quiet whispers (10..50 = 1.0x..5.0x)
@@ -133,16 +139,23 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
 
     private SmartAutomationEngine(Context context) {
         this.context = context;
+        this.prefs = context.getSharedPreferences("soundcore_personalized_prefs", Context.MODE_PRIVATE);
+        this.masterAppEnabled = prefs.getBoolean("master_app_enabled", true);
+        this.autoConnectOnBt = prefs.getBoolean("auto_connect_on_bt", true);
         this.sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
         this.audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
 
         addLog("🚀 Soundcore Personalized v2.0 Autonomous Engine Ready");
-        initSystemAudioFx();
-        applyBluetoothCallMicBoostParameters();
         registerBluetoothReceiver();
-        startSensors();
         startPeriodicWatchdog();
-        connectToEarbuds();
+        if (masterAppEnabled) {
+            initSystemAudioFx();
+            applyBluetoothCallMicBoostParameters();
+            startSensors();
+            connectToEarbuds();
+        } else {
+            addLog("⛔ Uygulama Devre Dışı (Kullanıcı tarafından kapatıldı - Kulaklık serbest)");
+        }
     }
 
     private void registerBluetoothReceiver() {
@@ -228,6 +241,16 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
 
     public String getConnectionStatusText() {
         String lang = I18n.getActiveLang();
+        if (!masterAppEnabled) {
+            return I18n.pick(lang,
+                    "⛔ Uygulama Kapalı • Kulaklık Serbest (Standart Mod)",
+                    "⛔ App Disabled • Earbuds Free (Stock Mode)",
+                    "⛔ App Deaktiviert • Kopfhörer frei",
+                    "⛔ App Desactivada • Auriculares libres",
+                    "⛔ App Désactivée • Écouteurs libres",
+                    "⛔ Приложение выключено • Наушники свободны",
+                    "⛔ التطبيق معطل • السماعة حرة");
+        }
         if (state.connected) {
             return I18n.pick(lang,
                     "Bağlı • " + state.deviceName + " (RFCOMM Aktif)",
@@ -256,6 +279,44 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
                     "Ожидание автоподключения",
                     "في انتظار الاتصال التلقائي");
         }
+    }
+
+    public boolean isMasterAppEnabled() { return masterAppEnabled; }
+    public boolean isAutoConnectOnBt() { return autoConnectOnBt; }
+
+    public synchronized void setMasterAppEnabled(boolean enabled) {
+        this.masterAppEnabled = enabled;
+        prefs.edit().putBoolean("master_app_enabled", enabled).apply();
+        if (!enabled) {
+            whisperTestLoopbackActive = false;
+            speakThreadRunning = false;
+            try {
+                if (systemEq != null) systemEq.setEnabled(false);
+            } catch (Throwable ignored) {}
+            try {
+                if (cinemaEnhancer != null) cinemaEnhancer.setEnabled(false);
+            } catch (Throwable ignored) {}
+            try {
+                if (sensorManager != null) sensorManager.unregisterListener(this);
+            } catch (Throwable ignored) {}
+            onEarbudsDisconnected("⏻ Uygulama Kapatıldı -> RFCOMM Bağlantısı Kesildi, Kulaklık Serbest Bırakıldı.");
+        } else {
+            addLog("⚡ Uygulama Yeniden Aktif Edildi -> Kulaklığa bağlanılıyor...");
+            initSystemAudioFx();
+            applyBluetoothCallMicBoostParameters();
+            startSensors();
+            connectToEarbuds();
+        }
+        notifyListeners();
+    }
+
+    public void setAutoConnectOnBt(boolean enabled) {
+        this.autoConnectOnBt = enabled;
+        prefs.edit().putBoolean("auto_connect_on_bt", enabled).apply();
+        addLog(enabled
+                ? "🔗 Bluetooth Otomatik Bağlantı: AÇIK"
+                : "🔗 Bluetooth Otomatik Bağlantı: KAPALI (Sadece elle açıldığında bağlanır)");
+        notifyListeners();
     }
 
     public String getLastTxHex() { return lastTxHex; }
@@ -348,6 +409,9 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
     }
 
     public synchronized void connectToEarbuds() {
+        if (!masterAppEnabled) {
+            return;
+        }
         if (connecting || (btSocket != null && btSocket.isConnected())) {
             if (btSocket != null && btSocket.isConnected()) {
                 sendPacket(SoundcoreProtocol.buildRequestStatePacket(), "State Sync [01 01]");
@@ -580,11 +644,13 @@ public class SmartAutomationEngine implements SensorEventListener, LocationListe
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                MediaNotificationListener.pollActiveMediaSessions(context);
-                checkPhoneCallState();
-                evaluateIdleStepReturnToAnc();
-                if (!state.connected && !connecting && isEarbudAclConnected()) {
-                    connectToEarbuds();
+                if (masterAppEnabled) {
+                    MediaNotificationListener.pollActiveMediaSessions(context);
+                    checkPhoneCallState();
+                    evaluateIdleStepReturnToAnc();
+                    if (autoConnectOnBt && !state.connected && !connecting && isEarbudAclConnected()) {
+                        connectToEarbuds();
+                    }
                 }
                 mainHandler.postDelayed(this, 2500);
             }
